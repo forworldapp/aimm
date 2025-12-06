@@ -102,3 +102,20 @@ class GrvtExchange(ExchangeInterface):
         except Exception as e:
             self.logger.error(f"Error fetching open orders: {e}")
             return []
+
+    async def get_position(self, symbol: str) -> Dict:
+        if not self.exchange: return {}
+        try:
+            # CCXT fetch_positions usually returns a list
+            positions = await self.exchange.fetch_positions([symbol])
+            for pos in positions:
+                if pos['symbol'] == symbol:
+                    return {
+                        'amount': float(pos['contracts']) if pos['contracts'] else 0.0,
+                        'entryPrice': float(pos['entryPrice']) if pos['entryPrice'] else 0.0,
+                        'unrealizedPnL': float(pos['unrealizedPnl']) if pos['unrealizedPnl'] else 0.0
+                    }
+            return {'amount': 0.0, 'entryPrice': 0.0, 'unrealizedPnL': 0.0}
+        except Exception as e:
+            self.logger.error(f"Error fetching position: {e}")
+            return {'amount': 0.0, 'entryPrice': 0.0, 'unrealizedPnL': 0.0}

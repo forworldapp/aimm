@@ -14,11 +14,14 @@ logger = logging.getLogger("Main")
 async def main():
     logger.info("Starting GRVT Bot...")
     
+    # 0. Load Config
+    Config.load("config.yaml")
+
     # 1. Initialize Exchange
     exchange = GrvtExchange(
         api_key=Config.GRVT_API_KEY,
         private_key=Config.GRVT_PRIVATE_KEY,
-        env=Config.GRVT_ENV
+        env=Config.get("exchange", "env")
     )
     
     # 2. Connect
@@ -29,17 +32,7 @@ async def main():
     logger.info(f"Initial Balance: {balance}")
     
     # 4. Run Strategy
-    # Initialize Market Maker Strategy
-    # Parameters can be moved to Config later
-    strategy = MarketMaker(
-        exchange=exchange,
-        symbol=Config.TRADING_PAIR,
-        spread=Config.SPREAD_PCT,
-        amount=Config.ORDER_AMOUNT,
-        refresh_interval=5 # 5 seconds loop
-    )
-    
-    # Run the strategy
+    strategy = MarketMaker(exchange)
     await strategy.run()
 
 if __name__ == "__main__":

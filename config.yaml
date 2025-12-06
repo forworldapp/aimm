@@ -1,0 +1,18 @@
+# General Settings
+exchange:
+  env: testnet  # testnet or prod
+  symbol: BTC-USDT
+
+# Strategy Settings (Market Maker)
+strategy:
+  name: market_maker
+  spread_pct: 0.001       # 0.1% spread
+  order_amount: 0.001     # Order size in BTC
+  refresh_interval: 5     # Seconds between cycles
+
+# Risk Management
+risk:
+  max_position_usd: 1000.0  # Max position size in USD
+  max_drawdown_pct: 0.05    # Stop bot if equity drops by 5%
+  inventory_skew_factor: 0.5 # How much to shift price based on inventory
+                             # 0.0 = No Skew, 1.0 = Aggressive Skew

@@ -2,37 +2,37 @@ import asyncio
 import logging
 from typing import List, Dict
 from core.exchange_interface import ExchangeInterface
+from core.config import Config
+from core.risk_manager import RiskManager
 from strategies.base_strategy import BaseStrategy
 from utils.calculations import round_tick_size, round_step_size
 
 class MarketMaker(BaseStrategy):
     """
-    Simple Market Making Strategy.
-    - Places a Bid and Ask around the Mid Price.
-    - Cancels and replaces orders if the price moves significantly.
+    Market Making Strategy with Inventory Management.
     """
 
-    def __init__(self, exchange: ExchangeInterface, symbol: str, 
-                 spread: float = 0.001, amount: float = 0.001, 
-                 refresh_interval: int = 5):
-        """
-        :param spread: Percentage spread from mid price (e.g., 0.001 = 0.1%)
-        :param amount: Order quantity per side
-        :param refresh_interval: Time in seconds to wait between loops
-        """
+    def __init__(self, exchange: ExchangeInterface):
+        # Load params from Config
+        symbol = Config.get("exchange", "symbol", "BTC-USDT")
         super().__init__(exchange, symbol)
-        self.logger = logging.getLogger("MarketMaker")
-        self.spread = spread
-        self.amount = amount
-        self.refresh_interval = refresh_interval
         
-        # Hardcoded for now, should be fetched from exchange info
+        self.logger = logging.getLogger("MarketMaker")
+        self.risk_manager = RiskManager()
+        
+        # Strategy Params
+        self.spread = float(Config.get("strategy", "spread_pct", 0.001))
+        self.amount = float(Config.get("strategy", "order_amount", 0.001))
+        self.refresh_interval = int(Config.get("strategy", "refresh_interval", 5))
+        self.skew_factor = float(Config.get("risk", "inventory_skew_factor", 0.0))
+        
+        # Exchange Info (Hardcoded for MVP)
         self.tick_size = 0.1 
         self.step_size = 0.001
 
     async def run(self):
         self.is_running = True
-        self.logger.info(f"Starting Market Maker on {self.symbol}...")
+        self.logger.info(f"Starting Market Maker on {self.symbol} (Spread: {self.spread*100}%)")
 
         while self.is_running:
             try:
@@ -43,85 +43,69 @@ class MarketMaker(BaseStrategy):
             await asyncio.sleep(self.refresh_interval)
 
     async def cycle(self):
-        """
-        Single execution cycle.
-        """
-        # 1. Get Market Data
+        # 1. Get Data
         orderbook = await self.exchange.get_orderbook(self.symbol)
-        if not orderbook or 'bids' not in orderbook or 'asks' not in orderbook:
-            self.logger.warning("Empty orderbook, skipping cycle.")
-            return
-
-        best_bid = orderbook['bids'][0][0] if orderbook['bids'] else 0
-        best_ask = orderbook['asks'][0][0] if orderbook['asks'] else 0
+        position = await self.exchange.get_position(self.symbol)
         
-        if best_bid == 0 or best_ask == 0:
-            self.logger.warning("Invalid orderbook prices.")
+        if not orderbook or 'bids' not in orderbook:
             return
 
+        best_bid = orderbook['bids'][0][0]
+        best_ask = orderbook['asks'][0][0]
         mid_price = (best_bid + best_ask) / 2
         
-        # 2. Calculate Target Prices
-        target_bid = round_tick_size(mid_price * (1 - self.spread), self.tick_size)
-        target_ask = round_tick_size(mid_price * (1 + self.spread), self.tick_size)
+        current_pos_qty = position.get('amount', 0.0)
+        
+        # 2. Calculate Skew
+        # Max position for skew calc (approximate, e.g., 10x order amount)
+        max_skew_qty = self.amount * 10 
+        skew_adjust = self.risk_manager.calculate_skew(current_pos_qty, max_skew_qty, self.skew_factor)
+        
+        # Apply Skew: If we have Long pos, skew_adjust is negative -> Lower prices -> Sell easier
+        skewed_mid = mid_price * (1 + skew_adjust)
+        
+        # 3. Calculate Targets
+        target_bid = round_tick_size(skewed_mid * (1 - self.spread), self.tick_size)
+        target_ask = round_tick_size(skewed_mid * (1 + self.spread), self.tick_size)
 
-        self.logger.info(f"Mid: {mid_price} | Target Bid: {target_bid} | Target Ask: {target_ask}")
+        self.logger.info(f"Pos: {current_pos_qty} | Mid: {mid_price:.2f} | SkewedMid: {skewed_mid:.2f} | Bid: {target_bid} | Ask: {target_ask}")
 
-        # 3. Manage Orders
+        # 4. Risk Check (Pre-Trade)
+        # Check if we can add more exposure
+        can_buy = self.risk_manager.check_trade_allowed(current_pos_qty * mid_price, self.amount * mid_price)
+        can_sell = self.risk_manager.check_trade_allowed(current_pos_qty * mid_price, self.amount * mid_price) 
+        # Note: Selling reduces long exposure, but increases short exposure. 
+        # For simplicity, check_trade_allowed checks absolute exposure.
+        
+        # 5. Manage Orders
         open_orders = await self.exchange.get_open_orders(self.symbol)
         
-        # Simple Logic: If any order exists that is NOT at our target price, Cancel All & Replace.
-        # (Optimization: Only cancel the specific wrong order)
-        
+        # Cancel if necessary
         should_reset = False
-        if not open_orders:
-            should_reset = True
-        else:
-            for order in open_orders:
-                price = float(order['price'])
-                side = order['side']
+        for order in open_orders:
+            price = float(order['price'])
+            side = order['side']
+            
+            if side == 'buy' and abs(price - target_bid) > self.tick_size:
+                should_reset = True
+            if side == 'sell' and abs(price - target_ask) > self.tick_size:
+                should_reset = True
                 
-                # Check if price deviation is too large (e.g., > 1 tick)
-                if side == 'buy' and abs(price - target_bid) > self.tick_size:
-                    should_reset = True
-                    break
-                if side == 'sell' and abs(price - target_ask) > self.tick_size:
-                    should_reset = True
-                    break
-
-        if should_reset:
-            self.logger.info("Price moved. Resetting orders...")
+        if should_reset or not open_orders:
             await self.cancel_all(open_orders)
-            await self.place_orders(target_bid, target_ask)
-        else:
-            self.logger.info("Orders are within range. Holding.")
+            
+            # Place new orders
+            if can_buy:
+                await self.place_limit_order('buy', target_bid)
+            if can_sell:
+                await self.place_limit_order('sell', target_ask)
 
     async def cancel_all(self, orders: List[Dict]):
-        """
-        Cancel all provided orders.
-        """
-        tasks = []
-        for order in orders:
-            tasks.append(self.exchange.cancel_order(self.symbol, order['id']))
-        if tasks:
-            await asyncio.gather(*tasks)
+        tasks = [self.exchange.cancel_order(self.symbol, o['id']) for o in orders]
+        if tasks: await asyncio.gather(*tasks)
 
-    async def place_orders(self, bid_price: float, ask_price: float):
-        """
-        Place both Bid and Ask orders.
-        """
-        # Place Bid
+    async def place_limit_order(self, side: str, price: float):
         try:
-            await self.exchange.place_limit_order(
-                self.symbol, 'buy', bid_price, self.amount
-            )
+            await self.exchange.place_limit_order(self.symbol, side, price, self.amount)
         except Exception as e:
-            self.logger.error(f"Failed to place Buy: {e}")
-
-        # Place Ask
-        try:
-            await self.exchange.place_limit_order(
-                self.symbol, 'sell', ask_price, self.amount
-            )
-        except Exception as e:
-            self.logger.error(f"Failed to place Sell: {e}")
+            self.logger.error(f"Failed to place {side}: {e}")

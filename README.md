@@ -38,9 +38,25 @@ pip install -r requirements.txt
 python main.py
 ```
 
+## Configuration
+The bot is configured via `config.yaml`. You can adjust strategy parameters and risk limits without changing code.
+
+```yaml
+# Example config.yaml
+strategy:
+  name: market_maker
+  spread_pct: 0.001       # 0.1% spread
+  order_amount: 0.001     # Order size
+  refresh_interval: 5     # Loop time (seconds)
+
+risk:
+  max_position_usd: 1000.0  # Max exposure
+  inventory_skew_factor: 0.5 # Inventory balancing strength
+```
+
 ## Architecture
-- `core/`: Core infrastructure (Exchange adapters, Config).
-- `strategies/`: Trading logic implementations.
+- `core/`: Core infrastructure (Exchange adapters, Config, Risk Manager).
+- `strategies/`: Trading logic implementations (Market Maker with Skew).
 - `utils/`: Helper functions.
 
 ## Security

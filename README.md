@@ -38,6 +38,13 @@ pip install -r requirements.txt
 python main.py
 ```
 
+### 5. Data Collection
+To collect market data for backtesting:
+```bash
+python scripts/data_collector.py
+```
+Data will be saved in `data/ticker_data_<timestamp>.csv`.
+
 ## Configuration
 The bot is configured via `config.yaml`. You can adjust strategy parameters and risk limits without changing code.
 

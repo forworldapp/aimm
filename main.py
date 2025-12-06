@@ -2,6 +2,7 @@ import asyncio
 import logging
 from core.config import Config
 from core.grvt_exchange import GrvtExchange
+from strategies.market_maker import MarketMaker
 
 # Setup Logging
 logging.basicConfig(
@@ -27,10 +28,19 @@ async def main():
     balance = await exchange.get_balance()
     logger.info(f"Initial Balance: {balance}")
     
-    # 4. Strategy Loop (Placeholder)
-    # In future, we will instantiate a Strategy class here and run it.
-    # strategy = MarketMaker(exchange)
-    # await strategy.run()
+    # 4. Run Strategy
+    # Initialize Market Maker Strategy
+    # Parameters can be moved to Config later
+    strategy = MarketMaker(
+        exchange=exchange,
+        symbol=Config.TRADING_PAIR,
+        spread=Config.SPREAD_PCT,
+        amount=Config.ORDER_AMOUNT,
+        refresh_interval=5 # 5 seconds loop
+    )
+    
+    # Run the strategy
+    await strategy.run()
 
 if __name__ == "__main__":
     try:

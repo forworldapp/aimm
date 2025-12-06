@@ -45,6 +45,13 @@ python scripts/data_collector.py
 ```
 Data will be saved in `data/ticker_data_<timestamp>.csv`.
 
+### 6. Backtesting
+1. Collect data using `scripts/data_collector.py`.
+2. Run the backtest:
+```bash
+python -m backtest.run_backtest data/ticker_data_<timestamp>.csv
+```
+
 ## Configuration
 The bot is configured via `config.yaml`. You can adjust strategy parameters and risk limits without changing code.
 

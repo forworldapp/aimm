@@ -1,0 +1,5 @@
+grvt-pysdk
+pandas
+numpy
+python-dotenv
+ccxt

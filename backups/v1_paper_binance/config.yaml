@@ -1,14 +1,14 @@
 exchange:
   mode: paper   # paper or live
   env: prod     # Changed to prod to match mainnet keys
-  symbol: BTC_USDT_Perp
+  symbol: BTC-USDT
 
 # Strategy Settings (Market Maker)
 strategy:
   name: market_maker
-  spread_pct: 0.0010      # 0.10% spread (Wider to capture passive profit)
+  spread_pct: 0.0002      # 0.02% spread (Sweet spot?)
   order_amount: 0.001     # Order size in BTC
-  refresh_interval: 3     # Seconds between cycles
+  refresh_interval: 5     # Seconds between cycles
 
 # Risk Management
 risk:

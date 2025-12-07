@@ -1,5 +1,7 @@
 grvt-pysdk
-pandas
-numpy
-python-dotenv
 ccxt
+pandas
+plotly
+streamlit
+python-dotenv
+pyyaml

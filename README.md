@@ -1,81 +1,88 @@
-# GRVT Trading Bot
+# 🚀 GRVT Market Maker Bot
 
-## Overview
-This project is a high-performance trading bot designed for the **GRVT Exchange**. It supports **Market Making** and **Grid Trading** strategies, built with a modular architecture to allow easy switching between exchanges or strategies.
+A high-performance, asynchronous Market Making bot designed for the **GRVT Exchange**.
+It features a robust **Paper Trading Mode** that utilizes live mainnet data to simulate trading strategies without financial risk, coupled with a real-time **Streamlit Dashboard** for monitoring and control.
 
-## Features
-- **Modular Design**: Exchange interactions are abstracted via `ExchangeInterface`.
-- **AsyncIO Core**: Built on Python's `asyncio` for high-concurrency performance.
-- **GRVT Integration**: Uses official `grvt-pysdk` for secure, authenticated trading.
-- **Strategies**:
-    - *Market Making* (Planned): Captures spread and rebates.
-    - *Grid Trading* (Planned): Fallback for volatile markets.
+## 🌟 Key Features
 
-## Setup
+*   **Real-time Paper Trading**: Connects to GRVT Mainnet to fetch live Orderbook ticks and simulates order execution locally with realistic mechanics (spread crossing, touch probablistic fills).
+*   **Market Maker Strategy**:
+    *   **Inventory Skew**: Automatically adjusts quotes to balance inventory.
+    *   **Trend Following**: Shifts spreads based on short-term price trends.
+    *   **Volatility Adjustment**: Widens spreads during turbulent market conditions.
+    *   **Post-Only Enforcement**: Ensures liquidity provision (Maker) and prevents Taker fees.
+*   **Interactive Dashboard**:
+    *   Real-time Equity Curve & Price History (5s resampling).
+    *   Live Position & PnL Monitoring.
+    *   Bot Control (Start/Stop/Close Position).
+    *   Trade History Logs (CSV Download).
 
-### 1. Prerequisites
-- Python 3.9+
-- Git
+## 🛠️ Architecture
 
-### 2. Installation
-```bash
-git clone https://github.com/forworldapp/grvtmmgrid.git
-cd grvtmmgrid
-pip install -r requirements.txt
-```
+*   **Core**: Python, `asyncio` for non-blocking operations.
+*   **Exchange Layer**:
+    *   `GrvtExchange`: Computes signatures and connects to GRVT SDK.
+    *   `PaperGrvtExchange`: Mocks execution engine while streaming real data.
+*   **Dashboard**: `Streamlit` with `Plotly` for interactive charting.
+*   **Data Interop**: JSON/CSV file-based IPC (Inter-Process Communication) between Bot and Dashboard.
 
-### 3. Configuration
-1. Copy `.env.example` to `.env`.
-2. Fill in your GRVT API credentials:
-   ```env
-   GRVT_API_KEY=your_api_key
-   GRVT_PRIVATE_KEY=your_private_key
-   GRVT_ENV=testnet
-   ```
+## 🚀 Getting Started
 
-### 4. Running the Bot
-```bash
-python main.py
-```
+### Prerequisites
 
-### 5. Data Collection
-To collect market data for backtesting:
-```bash
-python scripts/data_collector.py
-```
-Data will be saved in `data/ticker_data_<timestamp>.csv`.
+*   Python 3.10+
+*   GRVT API Credentials (for Real Data Access)
 
-### 6. Backtesting
-1. Collect data using `scripts/data_collector.py`.
-2. Run the backtest:
-```bash
-python -m backtest.run_backtest data/ticker_data_<timestamp>.csv
-```
+### Installation
 
-## Configuration
-The bot is configured via `config.yaml`. You can adjust strategy parameters and risk limits without changing code.
+1.  **Clone the Repository**
+    ```bash
+    git clone <repo-url>
+    cd grvt_bot
+    ```
 
-```yaml
-# Example config.yaml
-strategy:
-  name: market_maker
-  spread_pct: 0.001       # 0.1% spread
-  order_amount: 0.001     # Order size
-  refresh_interval: 5     # Loop time (seconds)
+2.  **Install Dependencies**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-risk:
-  max_position_usd: 1000.0  # Max exposure
-  inventory_skew_factor: 0.5 # Inventory balancing strength
-```
+3.  **Configuration**
+    *   Create a `.env` file with your GRVT credentials:
+        ```env
+        GRVT_API_KEY=your_api_key
+        GRVT_PRIVATE_KEY=your_private_key
+        ```
+    *   Adjust `config.yaml` for strategy parameters (Spread, Order Amount, Risk Limits).
 
-## Architecture
-- `core/`: Core infrastructure (Exchange adapters, Config, Risk Manager).
-- `strategies/`: Trading logic implementations (Market Maker with Skew).
-- `utils/`: Helper functions.
+### Usage
 
-## Security
-- **Never commit `.env` files.**
-- Private keys are handled locally and never logged.
+1.  **Start the Bot (Backend)**
+    ```bash
+    python main.py
+    ```
 
-## License
-Private / Proprietary
+2.  **Launch the Dashboard (Frontend)**
+    ```bash
+    streamlit run dashboard.py
+    ```
+    *   Open `http://localhost:8501` in your browser.
+
+## 📊 Strategy Tuning
+
+You can tune the bot behavior in `config.yaml`:
+
+*   `spread_pct`: Base spread between Bid and Ask (e.g., `0.001` for 0.1%).
+*   `refresh_interval`: How often to cancel and replace orders (e.g., `3` seconds).
+*   `inventory_skew_factor`: How aggressively to shift quotes to neutralize position.
+
+## 🔄 Recent Updates
+
+*   **v1.2.0**: Added **Post-Only** logic to prevent Taker fills.
+*   **v1.1.5**: Improved Dashboard with **5s Resampling** and High-Sensitivity Charts.
+*   **v1.1.0**: Implemented **Paper Trading** engine with real-time GRVT data feed.
+*   **v1.0.0**: Initial Release.
+
+## ⚠️ Disclaimer
+
+This software is for educational and testing purposes only. Use at your own risk.
+Paper Trading does not guarantee future performance in live markets due to latency and slippage differences.

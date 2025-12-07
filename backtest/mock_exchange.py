@@ -34,10 +34,9 @@ class MockExchange(ExchangeInterface):
         best_bid = row['best_bid']
         best_ask = row['best_ask']
         
-        # Simple Fill Logic for Maker Orders:
-        # Buy Limit filled if Market Best Ask drops <= Limit Price (Price crashed to our bid)
-        # Sell Limit filled if Market Best Bid rises >= Limit Price (Price pumped to our ask)
-        # Note: This is a conservative approximation for backtesting on quote data.
+        # Relaxed Fill Logic for Backtesting:
+        # If our order is at the best price (or better), assume a fill probability.
+        # In real MM, we are the best bid/ask.
         
         for order_id, order in list(self.orders.items()):
             if order['status'] != 'open': continue
@@ -46,11 +45,25 @@ class MockExchange(ExchangeInterface):
             fill_price = order['price']
             
             if order['side'] == 'buy':
+                # If Market Ask drops to our price (Cross) -> Definite Fill
                 if best_ask <= order['price']:
                     filled = True
+                # If we are at the Best Bid (Touch) -> Probabilistic Fill (e.g. 50%)
+                elif best_bid <= order['price']: 
+                    # Simulating Taker Sell hitting our Bid
+                    import random
+                    if random.random() < 0.5: 
+                        filled = True
+                        
             elif order['side'] == 'sell':
+                # If Market Bid rises to our price (Cross) -> Definite Fill
                 if best_bid >= order['price']:
                     filled = True
+                # If we are at the Best Ask (Touch) -> Probabilistic Fill
+                elif best_ask >= order['price']:
+                    import random
+                    if random.random() < 0.5:
+                        filled = True
             
             if filled:
                 self._execute_trade(order, fill_price)
@@ -59,8 +72,14 @@ class MockExchange(ExchangeInterface):
         qty = order['quantity']
         cost = qty * price
         
+        # Maker Rebate (Fee Level 4: -0.001%)
+        # 0.001% = 0.00001
+        rebate_rate = 0.00001 
+        rebate = cost * rebate_rate
+        
         if order['side'] == 'buy':
-            self.balance['USDT'] -= cost
+            # Buy: Pay cost, but get rebate (reduce cost)
+            self.balance['USDT'] -= (cost - rebate)
             self.balance['BTC'] += qty
             
             # Update Position (Weighted Average Price)
@@ -71,7 +90,8 @@ class MockExchange(ExchangeInterface):
             self.position['amount'] = new_qty
             
         elif order['side'] == 'sell':
-            self.balance['USDT'] += cost
+            # Sell: Receive cost + rebate
+            self.balance['USDT'] += (cost + rebate)
             self.balance['BTC'] -= qty
             
             # Update Position

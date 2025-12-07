@@ -34,21 +34,35 @@ async def run_backtest(data_file: str):
     
     strategy.is_running = True
     
-    while exchange.next_tick():
-        await strategy.cycle()
+    try:
+        while exchange.next_tick():
+            await strategy.cycle()
+            
+            # Optional: Print status every 100 ticks
+            if exchange.current_index % 100 == 0:
+                pos = exchange.position
+                bal = exchange.balance
+                # Estimate equity using mid price
+                current_price = (df.iloc[exchange.current_index]['best_bid'] + df.iloc[exchange.current_index]['best_ask']) / 2
+                equity = bal['USDT'] + (pos['amount'] * current_price)
+                logger.info(f"Step {exchange.current_index}: Equity=${equity:.2f} | Pos={pos['amount']}")
+    except KeyboardInterrupt:
+        logger.info("Backtest interrupted by user.")
+    except Exception as e:
+        logger.error(f"Backtest error: {e}")
+    finally:
+        # Final Report
+        logger.info("Backtest Complete (or Interrupted).")
         
-        # Optional: Print status every 100 ticks
-        if exchange.current_index % 100 == 0:
-            pos = exchange.position
-            bal = exchange.balance
-            equity = bal['USDT'] + (pos['amount'] * df.iloc[exchange.current_index]['best_bid'])
-            logger.info(f"Step {exchange.current_index}: Equity=${equity:.2f} | Pos={pos['amount']}")
-
-    # Final Report
-    logger.info("Backtest Complete.")
-    final_equity = exchange.balance['USDT'] + (exchange.position['amount'] * df.iloc[-1]['best_bid'])
-    logger.info(f"Final Equity: ${final_equity:.2f}")
-    logger.info(f"Total Trades: {len(exchange.trade_history)}")
+        # Calculate Final Equity
+        last_price = df.iloc[exchange.current_index]['best_bid'] if exchange.current_index < len(df) else df.iloc[-1]['best_bid']
+        final_equity = exchange.balance['USDT'] + (exchange.position['amount'] * last_price)
+        initial_balance = 10000.0
+        pnl = final_equity - initial_balance
+        
+        logger.info(f"Final Equity: ${final_equity:.2f}")
+        logger.info(f"PnL: ${pnl:.2f} ({(pnl/initial_balance)*100:.2f}%)")
+        logger.info(f"Total Trades: {len(exchange.trade_history)}")
 
 if __name__ == "__main__":
     # Example usage: python -m backtest.run_backtest data/ticker_data_12345.csv

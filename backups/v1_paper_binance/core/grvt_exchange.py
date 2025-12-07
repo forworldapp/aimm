@@ -9,15 +9,12 @@ from .exchange_interface import ExchangeInterface
 try:
     # Based on pip show, the package uses 'pysdk' as top-level
     from pysdk.grvt_ccxt import GrvtCcxt
-    from pysdk.grvt_ccxt_env import GrvtEnv
 except ImportError:
     try:
         # Fallback in case it changes or I misread
         from grvt_pysdk.exchange.grvt_ccxt import GrvtCcxt
-        from grvt_pysdk.exchange.grvt_ccxt_env import GrvtEnv
     except ImportError:
         GrvtCcxt = None
-        GrvtEnv = None
 
 class GrvtExchange(ExchangeInterface):
     """
@@ -37,19 +34,12 @@ class GrvtExchange(ExchangeInterface):
             return
 
         # Initialize the CCXT-compatible wrapper
-        # Correct usage: env must be GrvtEnv Enum, creds in parameters
-        
-        target_env = GrvtEnv.TESTNET
-        if self.env == 'prod' or self.env == 'mainnet':
-            target_env = GrvtEnv.PROD
-            
-        self.exchange = GrvtCcxt(
-            env=target_env,
-            parameters={
-                'apiKey': self.api_key,
-                'secret': self.private_key,
-            }
-        )
+        # Note: 'sandbox' param determines testnet vs mainnet in many CCXT implementations
+        self.exchange = GrvtCcxt({
+            'apiKey': self.api_key,
+            'secret': self.private_key,
+            'sandbox': (self.env == 'testnet')
+        })
 
     async def connect(self):
         """
@@ -65,7 +55,7 @@ class GrvtExchange(ExchangeInterface):
     async def get_balance(self) -> Dict[str, float]:
         if not self.exchange: return {}
         try:
-            balance = self.exchange.fetch_balance()
+            balance = await self.exchange.fetch_balance()
             return balance
         except Exception as e:
             self.logger.error(f"Error fetching balance: {e}")
@@ -78,7 +68,7 @@ class GrvtExchange(ExchangeInterface):
         if not self.exchange: return ""
         try:
             # CCXT standard: create_order(symbol, type, side, amount, price)
-            order = self.exchange.create_order(
+            order = await self.exchange.create_order(
                 symbol=symbol,
                 type='limit',
                 side=side,
@@ -94,7 +84,7 @@ class GrvtExchange(ExchangeInterface):
     async def cancel_order(self, symbol: str, order_id: str):
         if not self.exchange: return
         try:
-            self.exchange.cancel_order(order_id, symbol)
+            await self.exchange.cancel_order(order_id, symbol)
             self.logger.info(f"Order canceled: {order_id}")
         except Exception as e:
             self.logger.error(f"Failed to cancel order {order_id}: {e}")
@@ -103,7 +93,7 @@ class GrvtExchange(ExchangeInterface):
         if not self.exchange: return {}
         try:
             # limit=10 for top 10 bids/asks
-            orderbook = self.exchange.fetch_order_book(symbol, limit=10)
+            orderbook = await self.exchange.fetch_order_book(symbol, limit=10)
             return orderbook
         except Exception as e:
             self.logger.error(f"Error fetching orderbook: {e}")
@@ -112,7 +102,7 @@ class GrvtExchange(ExchangeInterface):
     async def get_open_orders(self, symbol: str) -> List[Dict]:
         if not self.exchange: return []
         try:
-            orders = self.exchange.fetch_open_orders(symbol)
+            orders = await self.exchange.fetch_open_orders(symbol)
             return orders
         except Exception as e:
             self.logger.error(f"Error fetching open orders: {e}")
@@ -122,7 +112,7 @@ class GrvtExchange(ExchangeInterface):
         if not self.exchange: return {}
         try:
             # CCXT fetch_positions usually returns a list
-            positions = self.exchange.fetch_positions([symbol])
+            positions = await self.exchange.fetch_positions([symbol])
             for pos in positions:
                 if pos['symbol'] == symbol:
                     return {

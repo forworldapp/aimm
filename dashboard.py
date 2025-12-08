@@ -106,22 +106,24 @@ st.divider()
 col_chart1, col_chart2 = st.columns(2)
 
 df_hist = pd.DataFrame()
-if os.path.exists(history_file):
-    try:
+try:
+    if os.path.exists(history_file):
         df_temp = pd.read_csv(history_file)
         if not df_temp.empty:
-            df_temp['datetime'] = pd.to_datetime(df_temp['timestamp'], unit='s')
+            # Convert to KST (Korea Standard Time)
+            df_temp['datetime'] = pd.to_datetime(df_temp['timestamp'], unit='s', utc=True)
+            df_temp['datetime'] = df_temp['datetime'].dt.tz_convert('Asia/Seoul')
             
             # Resampling Logic (5s)
+            # Note: resample needs index. dt accessors work, but easier to set index
             df_resampled = df_temp.set_index('datetime').resample('5s').last().dropna().reset_index()
             
-            if len(df_resampled) > 5:
+            if len(df_resampled) > 12:
                 df_hist = df_resampled.tail(600) # Show last ~50 mins of smoothed data
             else:
                 df_hist = df_temp.tail(2000) # Fallback to raw data
-                
-    except Exception as e:
-        st.error(f"Error loading history: {e}")
+except Exception as e:
+    st.error(f"Error loading history: {e}")
 
 with col_chart1:
     st.subheader("📈 Equity Curve")
@@ -179,17 +181,20 @@ if os.path.exists(trade_file):
     try:
         df_trade = pd.read_csv(trade_file)
         if not df_trade.empty:
-            df_trade['datetime'] = pd.to_datetime(df_trade['timestamp'], unit='s')
+            # Convert to KST
+            df_trade['datetime'] = pd.to_datetime(df_trade['timestamp'], unit='s', utc=True)
+            df_trade['datetime'] = df_trade['datetime'].dt.tz_convert('Asia/Seoul')
+            
             df_display = df_trade[['datetime', 'symbol', 'side', 'price', 'quantity', 'cost', 'fee', 'realized_pnl']].sort_values(by='datetime', ascending=False)
             
             st.dataframe(
                 df_display, 
                 use_container_width=True,
                 column_config={
-                    "datetime": st.column_config.DatetimeColumn("Time", format="MM-DD HH:mm:ss"),
+                    "datetime": st.column_config.DatetimeColumn("Time (KST)", format="MM-DD HH:mm:ss"),
                     "price": st.column_config.NumberColumn("Price", format="$%.2f"),
                     "cost": st.column_config.NumberColumn("Cost", format="$%.2f"),
-                    "fee": st.column_config.NumberColumn("Fee", format="$%.4f"),
+                    "fee": st.column_config.NumberColumn("Fee (Rebate if +)", format="$%.4f"),
                     "realized_pnl": st.column_config.NumberColumn("Realized PnL", format="$%.2f"),
                 }
             )
@@ -211,7 +216,12 @@ else:
 # --- Footer & Auto Refresh ---
 if status:
     ts = status.get('timestamp', 0)
-    st.caption(f"Last Bot Update: {datetime.datetime.fromtimestamp(ts).strftime('%H:%M:%S')}")
+    # Also convert footer timestamp to KST
+    try:
+        last_update = datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc).astimezone(datetime.timezone(datetime.timedelta(hours=9)))
+        st.caption(f"Last Bot Update: {last_update.strftime('%H:%M:%S')} (KST)")
+    except:
+        st.caption(f"Last Bot Update: {ts}")
 
 if auto_refresh:
     time.sleep(refresh_interval)

@@ -13,26 +13,6 @@ from utils.calculations import round_tick_size
 class MarketMaker(BaseStrategy):
     """
     Enhanced Market Maker Strategy for GRVT.
-    
-    Key Features:
-    1. **Inventory Skew**: Adjusts bid/ask prices based on current position to neutralize risk.
-       - If Long: Skew asks down to sell faster.
-       - If Short: Skew bids up to buy back faster.
-    2. **Trend & Volatility Adjustment**:
-       - Widens spread during high volatility.
-       - Shifts prices slightly in direction of trend.
-    3. **Post-Only Enforcement**:
-       - Strictly clamps order prices to match Best Bid/Ask to avoid Taker fees.
-       - Ensures the bot always acts as a liquidity provider.
-    4. **Profit Protection**:
-       - Prevents closing positions at a loss during normal/low volatility conditions.
-       - Uses 'Hold for Profit' logic to place exit orders above entry price.
-       
-    Architecture:
-    - Runs in a loop with `refresh_interval` (default 3s).
-    - Fetches live orderbook and position data.
-    - Calculates target prices and replaces all open orders.
-    - Listens for external commands (Start/Stop) via `command.json`.
     """
 
     def __init__(self, exchange: ExchangeInterface):
@@ -63,24 +43,22 @@ class MarketMaker(BaseStrategy):
     async def run(self):
         """
         메인 실행 루프
-        - 설정된 간격으로 반복 실행
-        - 명령어 확인 (Start/Stop)
         """
         self.is_running = True
         self.logger.info(f"Starting Enhanced Market Maker on {self.symbol}")
 
         while self.is_running:
             try:
-                # 0. 커맨드 확인 (대시보드에서 보낸 명령 처리)
+                # 0. 커맨드 확인
                 await self.check_command()
                 
-                # 봇이 정지(PAUSED) 상태이면 대기
+                # 봇이 PAUSED 상태이면 대기
                 if not self.is_active:
                     self.logger.info("Bot is PAUSED. Waiting for start command...", extra={'throttle': True})
                     await asyncio.sleep(2)
                     continue
 
-                # 활성 상태이면 매매 로직 수행
+                # 매매 사이클 실행
                 await self.cycle()
             except Exception as e:
                 self.logger.error(f"Error in strategy cycle: {e}")
@@ -141,12 +119,6 @@ class MarketMaker(BaseStrategy):
         return min(multiplier, 5.0)
 
     async def cycle(self):
-        """
-        단일 매매 사이클
-        1. 데이터 수집 (오더북, 포지션)
-        2. 파라미터 계산 (Skew, Spread)
-        3. 주문 관리 (기존 주문 취소 및 신규 주문)
-        """
         # 1. Get Data
         orderbook = await self.exchange.get_orderbook(self.symbol)
         position = await self.exchange.get_position(self.symbol)
@@ -182,31 +154,18 @@ class MarketMaker(BaseStrategy):
         target_ask = round_tick_size(skewed_mid * (1 + final_spread / 2), self.tick_size)
 
         # --- 4. Take Profit / Break-Even Logic ---
-        # Don't sell below entry (Long) or buy above entry (Short) unless stop-loss logic triggers (handled by risk manager or huge skew)
-        # Here we add a gentle force to ensure we quote profitable exits if close to market
-        
         min_profit = mid_price * 0.0005 # 0.05% Min Profit
         entry_price = position.get('entryPrice', 0.0)
         
         if current_pos_qty > 0: # Long Position -> Selling (Ask)
             min_ask = entry_price + min_profit
-            # If our target ask follows the market down below our entry, we lock in a loss.
-            # Instead, keep the ask at Break-Even+Profit, effectively waiting for rebound.
-            # Only if price drops massively (Stop Loss) should we follow down (Risk Manager handles that, or we implement SL here).
-            # For now, let's hold for profit.
             target_ask = max(target_ask, min_ask)
             
         elif current_pos_qty < 0: # Short Position -> Buying (Bid)
             max_bid = entry_price - min_profit
-            # If target bid follows market up above entry, we lock in loss.
             target_bid = min(target_bid, max_bid)
 
-        # --- 5. Post-Only Enforcement (Critical Fix) ---
-        # Prevent the Strategy from placing Taker orders (crossing the spread).
-        # Even if Skew says "Buy eagerly", we must cap at Best Bid to remain a Maker.
-        
-        # Ensure we don't cross the market
-        # If orderbook is empty, skip clamping (shouldn't happen here)
+        # --- 5. Post-Only Enforcement ---
         if best_bid > 0 and best_ask > 0:
             original_bid = target_bid
             original_ask = target_ask
@@ -215,14 +174,11 @@ class MarketMaker(BaseStrategy):
             target_bid = min(target_bid, best_bid)
             target_ask = max(target_ask, best_ask)
             
-            # If clamping changed the price significantly, log it
             if target_bid != original_bid or target_ask != original_ask:
                 self.logger.debug(f"Post-Only Clamped: Bid {original_bid}->{target_bid}, Ask {original_ask}->{target_ask}")
 
-        # Ensure Spread is maintained (sanity check)
+        # Ensure Spread is maintained
         if target_bid >= target_ask:
-            # This can happen if spread is tight and tick rounding messes up
-            # Force minimal spread
             target_bid = round_tick_size(mid_price - self.tick_size, self.tick_size)
             target_ask = round_tick_size(mid_price + self.tick_size, self.tick_size)
 

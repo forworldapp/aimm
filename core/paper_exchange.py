@@ -90,6 +90,7 @@ class PaperGrvtExchange(GrvtExchange):
         while True:
             try:
                 await self._check_paper_fills()
+                self._update_unrealized_pnl()
                 
                 # Save History & Status every 1 second
                 if time.time() - last_history_save >= 1.0:
@@ -151,6 +152,21 @@ class PaperGrvtExchange(GrvtExchange):
             
             if filled:
                 self._execute_paper_trade(order, fill_price)
+
+    def _update_unrealized_pnl(self):
+        """Update unrealized PnL based on last mid price."""
+        pos = self.paper_position
+        if pos['amount'] == 0:
+            pos['unrealizedPnL'] = 0.0
+            return
+
+        price = self.last_mid_price
+        if price <= 0: return # No price data yet
+
+        if pos['amount'] > 0: # Long
+            pos['unrealizedPnL'] = (price - pos['entryPrice']) * pos['amount']
+        else: # Short
+            pos['unrealizedPnL'] = (pos['entryPrice'] - price) * abs(pos['amount'])
 
     def _execute_paper_trade(self, order, price):
         qty = order['quantity'] # Always positive

@@ -61,19 +61,26 @@ class MarketMaker(BaseStrategy):
         self.is_active = False # Default PAUSED (Must act safety first)
 
     async def run(self):
+        """
+        메인 실행 루프
+        - 설정된 간격으로 반복 실행
+        - 명령어 확인 (Start/Stop)
+        """
         self.is_running = True
         self.logger.info(f"Starting Enhanced Market Maker on {self.symbol}")
 
         while self.is_running:
             try:
-                # 0. Check Commands
+                # 0. 커맨드 확인 (대시보드에서 보낸 명령 처리)
                 await self.check_command()
                 
+                # 봇이 정지(PAUSED) 상태이면 대기
                 if not self.is_active:
                     self.logger.info("Bot is PAUSED. Waiting for start command...", extra={'throttle': True})
                     await asyncio.sleep(2)
                     continue
 
+                # 활성 상태이면 매매 로직 수행
                 await self.cycle()
             except Exception as e:
                 self.logger.error(f"Error in strategy cycle: {e}")
@@ -134,6 +141,12 @@ class MarketMaker(BaseStrategy):
         return min(multiplier, 5.0)
 
     async def cycle(self):
+        """
+        단일 매매 사이클
+        1. 데이터 수집 (오더북, 포지션)
+        2. 파라미터 계산 (Skew, Spread)
+        3. 주문 관리 (기존 주문 취소 및 신규 주문)
+        """
         # 1. Get Data
         orderbook = await self.exchange.get_orderbook(self.symbol)
         position = await self.exchange.get_position(self.symbol)

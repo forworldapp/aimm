@@ -21,7 +21,7 @@ st.title("🚀 GRVT Market Maker Bot")
 st.sidebar.header("⚙️ Configuration")
 
 # Refresh Control
-refresh_interval = st.sidebar.slider("🔄 Refresh Interval (sec)", min_value=1, max_value=60, value=3, help="Set to higher value if dashboard lags.")
+refresh_interval = st.sidebar.slider("Refresh Interval (sec)", 1, 60, 10)
 auto_refresh = st.sidebar.checkbox("Enable Auto-Refresh", value=True)
 
 CONFIG_PATH = "config.yaml"
@@ -108,8 +108,16 @@ col_chart1, col_chart2 = st.columns(2)
 df_hist = pd.DataFrame()
 try:
     if os.path.exists(history_file):
+        # Try reading with header inference
         df_temp = pd.read_csv(history_file)
-        if not df_temp.empty:
+        
+        # Check if header is missing (e.g. first column is float timestamp)
+        # If 'timestamp' column is missing, likely headerless
+        if 'timestamp' not in df_temp.columns and not df_temp.empty:
+             # Reload with explicit column names
+             df_temp = pd.read_csv(history_file, names=["timestamp", "total_usdt_value", "realized_pnl", "price"])
+             
+        if not df_temp.empty and len(df_temp) > 0:
             # Convert to KST (Korea Standard Time)
             df_temp['datetime'] = pd.to_datetime(df_temp['timestamp'], unit='s', utc=True)
             df_temp['datetime'] = df_temp['datetime'].dt.tz_convert('Asia/Seoul')
@@ -185,13 +193,14 @@ if os.path.exists(trade_file):
             df_trade['datetime'] = pd.to_datetime(df_trade['timestamp'], unit='s', utc=True)
             df_trade['datetime'] = df_trade['datetime'].dt.tz_convert('Asia/Seoul')
             
-            df_display = df_trade[['datetime', 'symbol', 'side', 'price', 'quantity', 'cost', 'fee', 'realized_pnl']].sort_values(by='datetime', ascending=False)
+            df_display = df_trade[['datetime', 'action', 'symbol', 'side', 'price', 'quantity', 'cost', 'fee', 'realized_pnl']].sort_values(by='datetime', ascending=False)
             
             st.dataframe(
                 df_display, 
                 use_container_width=True,
                 column_config={
                     "datetime": st.column_config.DatetimeColumn("Time (KST)", format="MM-DD HH:mm:ss"),
+                    "action": "Action",
                     "price": st.column_config.NumberColumn("Price", format="$%.2f"),
                     "cost": st.column_config.NumberColumn("Cost", format="$%.2f"),
                     "fee": st.column_config.NumberColumn("Fee (Rebate if +)", format="$%.4f"),

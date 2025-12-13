@@ -59,7 +59,7 @@ class PaperGrvtExchange(GrvtExchange):
         if not os.path.exists(self.trade_file):
             with open(self.trade_file, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(["timestamp", "symbol", "side", "price", "quantity", "cost", "fee", "realized_pnl"])
+                writer.writerow(["timestamp", "symbol", "side", "price", "quantity", "cost", "fee", "realized_pnl", "action"])
 
     async def connect(self):
         # Prevent multiple monitor loops
@@ -248,8 +248,17 @@ class PaperGrvtExchange(GrvtExchange):
         if new_pos == 0:
             self.paper_position['unrealizedPnL'] = 0.0
 
+        # Determine Action Label
+        action_label = "Trade"
+        if old_pos == 0:
+            action_label = f"Open {side.title()}"
+        elif is_opening and not is_closing:
+            action_label = f"Increase {side.title()}"
+        elif is_closing:
+             action_label = f"Reduce {'Long' if old_pos > 0 else 'Short'}"
+
         order['status'] = 'filled'
-        self.logger.info(f"PAPER TRADE: {side.upper()} {qty} @ {price} | NewPos: {new_pos:.4f} @ {new_entry:.2f} | PnL: {realized_pnl:.2f}")
+        self.logger.info(f"PAPER TRADE: {action_label} | {qty} @ {price} | PnL: {realized_pnl:.2f}")
         
         # Save Trade History
         try:
@@ -263,7 +272,8 @@ class PaperGrvtExchange(GrvtExchange):
                     qty,
                     cost,
                     rebate,
-                    realized_pnl
+                    realized_pnl,
+                    action_label
                 ])
         except Exception as e:
             self.logger.error(f"Failed to save trade history: {e}")
@@ -378,7 +388,28 @@ class PaperGrvtExchange(GrvtExchange):
         self.paper_balance['USDT'] += realized_pnl
             
         self.paper_position = {'amount': 0.0, 'entryPrice': 0.0, 'unrealizedPnL': 0.0}
-        self.logger.info("Position Closed via Dashboard")
+        
+        action_label = "Manual Close"
+        self.logger.info(f"Position Closed via Dashboard. PnL: {realized_pnl:.2f}")
+
+        # Save Trade History
+        try:
+            with open(self.trade_file, 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    time.time(),
+                    symbol,
+                    'sell' if pos['amount'] > 0 else 'buy', # Counter trade
+                    price,
+                    qty,
+                    cost,
+                    rebate,
+                    realized_pnl,
+                    action_label
+                ])
+        except Exception as e:
+            self.logger.error(f"Failed to save trade history: {e}")
+
         self._save_status()
 
     async def get_balance(self) -> Dict[str, float]:

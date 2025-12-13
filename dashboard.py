@@ -120,6 +120,10 @@ try:
         if not df_temp.empty and len(df_temp) > 0:
             # Convert to KST (Korea Standard Time)
             df_temp['datetime'] = pd.to_datetime(df_temp['timestamp'], unit='s', utc=True)
+            
+            # Filter Invalid Data (Prevent Memory Explosion from bad timestamps)
+            df_temp = df_temp[df_temp['datetime'].dt.year >= 2024]
+            
             df_temp['datetime'] = df_temp['datetime'].dt.tz_convert('Asia/Seoul')
             
             # Resampling Logic (5s)

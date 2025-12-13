@@ -58,7 +58,7 @@ class MarketMaker(BaseStrategy):
         
         # Command Control
         self.command_file = os.path.join("data", "command.json")
-        self.is_active = True # Default running
+        self.is_active = False # Default PAUSED (Must act safety first)
 
     async def run(self):
         self.is_running = True

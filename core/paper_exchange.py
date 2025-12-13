@@ -38,7 +38,7 @@ class PaperGrvtExchange(GrvtExchange):
         self.exchange = real_exchange.exchange
         
         # Paper Trading State
-        self.paper_balance = {'USDT': 10000.0, 'BTC': 0.0}
+        self.paper_balance = {'USDT': 10000.0}
         self.paper_orders = {} 
         self.paper_position = {'amount': 0.0, 'entryPrice': 0.0, 'unrealizedPnL': 0.0}
         self.paper_order_id_counter = 0
@@ -139,14 +139,14 @@ class PaperGrvtExchange(GrvtExchange):
                 if best_ask <= order['price']: # Cross
                     filled = True
                 elif best_bid <= order['price']: # Touch
-                    if random.random() < 0.05: # Reduced to 5% likelihood per tick
+                    if random.random() < 0.10: # 10% likelihood (Realistic)
                         filled = True
                         
             elif order['side'] == 'sell':
                 if best_bid >= order['price']: # Cross
                     filled = True
                 elif best_ask >= order['price']: # Touch
-                    if random.random() < 0.05:
+                    if random.random() < 0.10:
                         filled = True
             
             if filled:
@@ -197,11 +197,9 @@ class PaperGrvtExchange(GrvtExchange):
                 is_opening = True # Logic below needs to handle remainder
         
         # --- Update Balance (Fees/Rebates) ---
-        # Provide liquidity rebate (maker) - simplified
-        if side == 'buy':
-            self.paper_balance['USDT'] += rebate 
-        else:
-            self.paper_balance['USDT'] += rebate
+        # NOTE: In USD-Margined Perps, we only track USDT balance.
+        # Rebates are added directly to USDT balance.
+        self.paper_balance['USDT'] += rebate
 
         # --- Update Position & PnL ---
         
@@ -371,12 +369,13 @@ class PaperGrvtExchange(GrvtExchange):
         cost = qty * price
         rebate = cost * 0.00001
         
-        if pos['amount'] > 0: # Sell
-            self.paper_balance['USDT'] += (cost + rebate)
-            self.paper_balance['BTC'] -= qty
-        else: # Buy
-            self.paper_balance['USDT'] -= (cost - rebate)
-            self.paper_balance['BTC'] += qty
+        if pos['amount'] > 0: # Closing Long
+            pnl = (price - pos['entryPrice']) * qty
+        else: # Closing Short
+            pnl = (pos['entryPrice'] - price) * qty
+            
+        realized_pnl = pnl + rebate # Add rebate
+        self.paper_balance['USDT'] += realized_pnl
             
         self.paper_position = {'amount': 0.0, 'entryPrice': 0.0, 'unrealizedPnL': 0.0}
         self.logger.info("Position Closed via Dashboard")

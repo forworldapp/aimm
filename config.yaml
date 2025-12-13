@@ -6,7 +6,7 @@ exchange:
 # Strategy Settings (Market Maker)
 strategy:
   name: market_maker
-  spread_pct: 0.0010      # 0.10% spread (Wider to capture passive profit)
+  spread_pct: 0.0010      # 0.10% spread (Stable, wider margin)
   order_amount: 0.001     # Order size in BTC
   refresh_interval: 3     # Seconds between cycles
 

@@ -109,13 +109,13 @@ df_hist = pd.DataFrame()
 try:
     if os.path.exists(history_file):
         # Try reading with header inference
-        df_temp = pd.read_csv(history_file)
+        df_temp = pd.read_csv(history_file, on_bad_lines='skip')
         
         # Check if header is missing (e.g. first column is float timestamp)
         # If 'timestamp' column is missing, likely headerless
         if 'timestamp' not in df_temp.columns and not df_temp.empty:
              # Reload with explicit column names
-             df_temp = pd.read_csv(history_file, names=["timestamp", "total_usdt_value", "realized_pnl", "price"])
+             df_temp = pd.read_csv(history_file, names=["timestamp", "total_usdt_value", "realized_pnl", "price"], on_bad_lines='skip')
              
         if not df_temp.empty and len(df_temp) > 0:
             # Convert to KST (Korea Standard Time)

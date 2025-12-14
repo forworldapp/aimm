@@ -300,7 +300,7 @@ class PaperGrvtExchange(GrvtExchange):
     # --- State Saving ---
 
     def _save_status(self):
-        """Save current snapshot for dashboard."""
+        """Save current snapshot for dashboard using atomic write."""
         try:
             status = {
                 "timestamp": time.time(),
@@ -309,8 +309,13 @@ class PaperGrvtExchange(GrvtExchange):
                 "mid_price": self.last_mid_price,
                 "open_orders": len([o for o in self.paper_orders.values() if o['status'] == 'open'])
             }
-            with open(self.status_file, "w") as f:
+            # Atomic Write: Write to tmp file then rename to avoid read conflicts
+            temp_file = self.status_file + ".tmp"
+            with open(temp_file, "w") as f:
                 json.dump(status, f)
+                f.flush()
+                os.fsync(f.fileno()) # Ensure write to disk
+            os.replace(temp_file, self.status_file)
         except Exception as e:
             self.logger.error(f"Failed to save paper status: {e}")
 

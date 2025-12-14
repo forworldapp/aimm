@@ -62,17 +62,31 @@ with col_ctrl2:
 
 st.divider()
 
-# --- Status Data Loading ---
+# --- Status Data Loading with Persistence ---
 paper_status_file = os.path.join("data", "paper_status.json")
 history_file = os.path.join("data", "pnl_history.csv")
 trade_file = os.path.join("data", "trade_history.csv")
 
+# Initialize Session State for Status if not present to prevent flickering
+if 'last_valid_status' not in st.session_state:
+    st.session_state.last_valid_status = {}
+
 status = {}
-if os.path.exists(paper_status_file):
-    try:
+try:
+    if os.path.exists(paper_status_file):
         with open(paper_status_file, "r") as f:
-            status = json.load(f)
-    except: pass
+            data = json.load(f)
+            if data:  # Ensure it's not empty
+                status = data
+                st.session_state.last_valid_status = data # Update cache
+except Exception as e:
+    # On read failure (race condition), fallback to last known good state
+    # This prevents the dashboard from flashing "0"
+    pass
+
+# Fallback to last valid state if current read failed
+if not status and st.session_state.last_valid_status:
+    status = st.session_state.last_valid_status
 
 # --- Metrics Section ---
 st.subheader("📊 Live Performance")

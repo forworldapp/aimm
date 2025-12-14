@@ -97,6 +97,14 @@ class MarketMaker(BaseStrategy):
                     self.is_active = True
                     os.remove(self.command_file)
                     
+                elif command == "shutdown":
+                    self.logger.critical("RECEIVED SHUTDOWN COMMAND. TERMINATING PROCESS...")
+                    self.is_active = False
+                    self.is_running = False # This breaks the while loop
+                    # Clean up
+                    if os.path.exists(self.command_file):
+                        os.remove(self.command_file)
+                    
             except Exception as e:
                 self.logger.error(f"Error reading command: {e}")
 

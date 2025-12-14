@@ -45,7 +45,7 @@ with st.sidebar.expander("📝 Edit Config.yaml"):
 
 # --- Main Area: Bot Control ---
 st.subheader("🎮 Bot Control")
-col_ctrl1, col_ctrl2 = st.columns(2)
+col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
 command_file = os.path.join("data", "command.json")
 
 with col_ctrl1:
@@ -59,6 +59,12 @@ with col_ctrl2:
         with open(command_file, "w") as f:
             json.dump({"command": "stop_close"}, f)
         st.toast("Sent STOP & CLOSE command!", icon="🛑")
+
+with col_ctrl3:
+    if st.button("💀 Shutdown Process", type="primary", use_container_width=True):
+        with open(command_file, "w") as f:
+            json.dump({"command": "shutdown"}, f)
+        st.toast("Sent SHUTDOWN command! Bot will exit.", icon="💀")
 
 st.divider()
 

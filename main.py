@@ -40,9 +40,30 @@ async def main():
     await strategy.run()
 
 if __name__ == "__main__":
+    import socket
+    import sys
+
+    # Singleton Pattern: Bind a specific port to prevent multiple instances
+    def get_lock():
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            s.bind(("127.0.0.1", 45432))
+            return s
+        except socket.error:
+            return None
+
+    lock_socket = get_lock()
+    if not lock_socket:
+        logger.error("FATAL: Another instance of GRVT Bot is already running.")
+        print("Error: Bot is already running! Check terminal or task manager.")
+        sys.exit(1)
+
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user.")
     except Exception as e:
         logger.error(f"Fatal error: {e}")
+    finally:
+        if lock_socket:
+            lock_socket.close()

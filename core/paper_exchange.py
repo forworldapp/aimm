@@ -156,7 +156,8 @@ class PaperGrvtExchange(GrvtExchange):
     def _update_unrealized_pnl(self):
         """Update unrealized PnL based on last mid price."""
         pos = self.paper_position
-        if pos['amount'] == 0:
+        if abs(pos['amount']) < 1e-9: # Handle floating point errors
+            pos['amount'] = 0.0
             pos['unrealizedPnL'] = 0.0
             return
 

@@ -14,4 +14,4 @@ strategy:
 risk:
   max_position_usd: 1000.0  # Max position size in USD
   max_drawdown_pct: 0.05    # Stop bot if equity drops by 5%
-  inventory_skew_factor: 0.05 # Reduced skew to prevent aggressive stop losses
+  inventory_skew_factor: 0.10 # Increased skew to unwind positions faster

@@ -80,8 +80,14 @@ class MarketMaker(BaseStrategy):
                     # Execute Close Logic
                     if hasattr(self.exchange, "cancel_all_orders"):
                         await self.exchange.cancel_all_orders(self.symbol)
+                        await asyncio.sleep(0.5) # Wait for processing
+                        
                     if hasattr(self.exchange, "close_position"):
                         await self.exchange.close_position(self.symbol)
+                        
+                    # Double check to ensure no residual orders
+                    if hasattr(self.exchange, "cancel_all_orders"):
+                        await self.exchange.cancel_all_orders(self.symbol)
                     
                     # Remove command file
                     os.remove(self.command_file)

@@ -6,17 +6,22 @@
 - [x] 예외 처리 강화 (GrvtExchange Retry Logic applied)
 - [x] 로깅 시스템 개선 (RotatingFileHandler configured)
 
-## Phase 2: 전략 고도화 (In Progress 🏗️)
-- [x] Grid 레이어 주문 (Multi-layer Grid implemented)
-- [x] 스마트 Cancel & Replace (Only update on significant price change)
-- [x] 동적 트렌드 Skew (MA-based Trend Mode & Toggle)
-- [x] 평단가 방어 로직 (Entry Anchor Mode for Ranging Markets)
-- [ ] 동적 스프레드 (Based on Orderbook Imbalance/Depth)
-- [ ] 트렌드 필터 강화 (Integrate RSI, MACD indicators)
+## Phase 2: Intelligence & Optimization (v1.2 - v1.3)
+- [x] **Adaptive Trend Strategy** (v1.2)
+    - [x] Auto-detect Ranging vs Trending using MA Divergence.
+    - [x] Dynamic Skew Adjustment.
+- [x] **Advanced Technical Filters** (v1.3)
+    - [x] Implement ADX, ATR, Choppiness Index Filters.
+    - [x] Create 'Combo' Filter (ADX + ATR) for high-probability entries.
+    - [x] Integrate Candle Data (OHLC) processing.
+- [x] **Dashboard V2** (v1.3)
+    - [x] Selectable Strategy Mode (Combo, ADX, MA, etc).
+    - [x] Real-time Regime Status Display.
 
-## Phase 3: 인프라 (Upcoming)
-- [ ] Telegram/Discord 알림
-- [ ] 다중 심볼 지원 (Multi-symbol architecture)
+## Phase 3: Risk & Advanced Features (v1.4+)
+- [ ] **Dynamic Parameters**
+    - [ ] Auto-adjust Spread based on ATR/Volatility.
+    - [ ] [TODO] restore ADX period to 14.mbol architecture)
 - [ ] 백테스트 프레임워크 (Backtesting engine)
 - [ ] Live 모드 테스트 (Small capital test)
 

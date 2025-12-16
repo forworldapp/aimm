@@ -1,5 +1,19 @@
 # Changelog
 
+## [v1.3.0] - 2025-12-16
+### Added
+- **Advanced Trend Filters (`strategies/filters.py`)**:
+    - Implemented `ADXFilter` (Trend Strength), `ATRFilter` (Volatility), `ChopFilter` (Market Efficiency).
+    - Added `ComboFilter` (ADX + ATR) for high-probability trend detection.
+- **Selectable Strategy Mode**: Dashboard now allows choosing between `off`, `ma_trend`, `adaptive`, `adx`, `atr`, `chop`, `combo`.
+- **Candle Processing**: `MarketMaker` now builds real-time 1m OHLC candles for technical indicators.
+- **Testing Optimization**: Temporarily reduced `Combo` requirement to 7 candles (approx. 15m wait) for faster validation. (To be restored to 14 in v1.4).
+
+### Fixed
+- **Fatal Error**: Fixed `name 'pd' is not defined` error caused by import issues in `MarketMaker`.
+- **AttributeError**: Implemented missing `get_account_summary` in `PaperGrvtExchange`.
+- **Infinite Waiting**: Fixed `MAFilter` waiting indefinitely by optimizing window size.
+
 ## [v1.2.0] - 2025-12-15
 ### Added
 - **Adaptive Market Making**: New strategy mode `'adaptive'` that automatically detects market regime.

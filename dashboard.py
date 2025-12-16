@@ -48,7 +48,7 @@ current_strategy = config_data.get('strategy', {}).get('trend_strategy', 'adapti
 if str(current_strategy).lower() == 'true': current_strategy = 'ma_trend'
 if str(current_strategy).lower() == 'false': current_strategy = 'off'
 
-trend_options = ['off', 'ma_trend', 'adaptive']
+trend_options = ['off', 'ma_trend', 'adaptive', 'adx', 'atr', 'chop', 'combo']
 try:
     idx = trend_options.index(current_strategy)
 except:
@@ -58,7 +58,7 @@ target_strategy = st.sidebar.selectbox(
     "📊 Trend Strategy", 
     trend_options, 
     index=idx, 
-    help="'off': Pure Grid (Ranging). 'ma_trend': Always Skew (Trending). 'adaptive': Auto detect."
+    help="Select Technical Indicator:\n- off: Pure Grid\n- ma_trend: SMA Divergence\n- adx: ADX > 25\n- atr: Volatility Breakout\n- chop: Choppiness Index < 40\n- combo: ADX + ATR (Ultimate)"
 )
 
 # Risk Params

@@ -76,7 +76,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Bot stopped by user.")
     except Exception as e:
-        logger.error(f"Fatal error: {e}")
+        logger.error(f"Fatal error: {e}", exc_info=True)
     finally:
         if lock_socket:
             lock_socket.close()

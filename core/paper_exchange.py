@@ -399,6 +399,22 @@ class PaperGrvtExchange(GrvtExchange):
         if self.last_mid_price > 0 and pos['amount'] != 0:
              pos['unrealizedPnL'] = (self.last_mid_price - pos['entryPrice']) * pos['amount']
         return pos
+        
+    async def get_account_summary(self):
+        """Simulate account summary for Risk Manager."""
+        # Calculate Unrealized PnL
+        pos = self.paper_position
+        unrealized = 0.0
+        if self.last_mid_price > 0 and pos['amount'] != 0:
+             unrealized = (self.last_mid_price - pos['entryPrice']) * pos['amount']
+             
+        # Mock summary structure
+        return {
+            'total_equity': self.paper_balance['USDT'] + unrealized,
+            'available_balance': self.paper_balance['USDT'],
+            'initial_margin': 0.0,
+            'maintenance_margin': 0.0
+        }
 
     async def cancel_all_orders(self, symbol: str):
         for oid in self.paper_orders:

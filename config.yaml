@@ -13,4 +13,4 @@ strategy:
   name: market_maker
   order_amount: 0.001
   refresh_interval: 3
-  spread_pct: 0.0005 # Reduced to 0.05% for better fills
+  spread_pct: 0.0008 # Adjusted to 0.08% to prevent whipsaw losses

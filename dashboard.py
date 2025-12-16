@@ -26,22 +26,76 @@ auto_refresh = st.sidebar.checkbox("Enable Auto-Refresh", value=True)
 
 CONFIG_PATH = "config.yaml"
 
-def load_config():
-    if os.path.exists(CONFIG_PATH):
-        with open(CONFIG_PATH, "r") as f:
-            return f.read()
-    return ""
+# Load Config
+try:
+    with open(CONFIG_PATH, "r") as f:
+        config_data = yaml.safe_load(f) or {}
+except Exception:
+    config_data = {}
 
-def save_config(config_str):
+st.sidebar.subheader("⚡ Quick Settings")
+# Grid Layers
+current_layers = int(config_data.get('strategy', {}).get('grid_layers', 3))
+layers_input = st.sidebar.number_input("Grid Layers", min_value=1, max_value=10, value=current_layers)
+
+# Entry Anchor Mode (v1.2)
+current_anchor = bool(config_data.get('strategy', {}).get('entry_anchor_mode', True))
+anchor_mode = st.sidebar.checkbox("🛡️ Entry Anchor Mode", value=current_anchor, help="If ON, only buys below entry (long) or sells above entry (short).")
+
+# Trend Follow Strategy (v1.3)
+current_strategy = config_data.get('strategy', {}).get('trend_strategy', 'adaptive')
+# Backward compatibility
+if str(current_strategy).lower() == 'true': current_strategy = 'ma_trend'
+if str(current_strategy).lower() == 'false': current_strategy = 'off'
+
+trend_options = ['off', 'ma_trend', 'adaptive']
+try:
+    idx = trend_options.index(current_strategy)
+except:
+    idx = 2 # Default adaptive
+
+target_strategy = st.sidebar.selectbox(
+    "📊 Trend Strategy", 
+    trend_options, 
+    index=idx, 
+    help="'off': Pure Grid (Ranging). 'ma_trend': Always Skew (Trending). 'adaptive': Auto detect."
+)
+
+# Risk Params
+current_dd = float(config_data.get('risk', {}).get('max_drawdown_pct', 0.10))
+drawdown_input = st.sidebar.slider("Max Drawdown %", 0.01, 0.20, value=current_dd, format="%.2f")
+
+current_pos_usd = float(config_data.get('risk', {}).get('max_position_usd', 1000.0))
+pos_limit = st.sidebar.number_input("Max Pos (USD)", 100.0, 10000.0, value=current_pos_usd)
+
+if st.sidebar.button("💾 Apply & Reload Bot"):
+    # Update Data
+    if 'strategy' not in config_data: config_data['strategy'] = {}
+    if 'risk' not in config_data: config_data['risk'] = {}
+    
+    config_data['strategy']['grid_layers'] = layers_input
+    config_data['strategy']['entry_anchor_mode'] = anchor_mode
+    config_data['strategy']['trend_strategy'] = target_strategy
+    config_data['risk']['max_drawdown_pct'] = drawdown_input
+    config_data['risk']['max_position_usd'] = pos_limit
+    
+    # Save YAML
     with open(CONFIG_PATH, "w") as f:
-        f.write(config_str)
+        yaml.dump(config_data, f, default_flow_style=False)
+    
+    # Send Reload Command
+    command_file = os.path.join("data", "command.json")
+    with open(command_file, "w") as f:
+        json.dump({"command": "reload_config"}, f)
+        
+    st.sidebar.success("Params Updated & Bot Reloaded!")
 
-config_content = load_config()
-with st.sidebar.expander("📝 Edit Config.yaml"):
-    new_config = st.text_area("YAML Config", value=config_content, height=300)
-    if st.button("💾 Save Config"):
-        save_config(new_config)
-        st.success("Configuration Saved!")
+# Advanced: Raw YAML Editor
+with st.sidebar.expander("📝 Advanced YAML Edit"):
+    # Use config_data to show current state
+    raw_yaml = yaml.dump(config_data, default_flow_style=False)
+    st.text_area("Read-Only Config View", value=raw_yaml, height=200, disabled=True)
+
 
 # --- Main Area: Bot Control ---
 st.subheader("🎮 Bot Control")
@@ -96,7 +150,7 @@ if not status and st.session_state.last_valid_status:
 
 # --- Metrics Section ---
 st.subheader("📊 Live Performance")
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 
 balance = status.get('balance', {})
 pos = status.get('position', {})
@@ -120,6 +174,10 @@ with col3:
 with col4:
     open_orders = status.get('open_orders', 0)
     st.metric("Open Orders", open_orders)
+    
+with col5:
+    regime = status.get('market_regime', 'N/A').upper()
+    st.metric("🚦 Regime", regime, help="Adaptive Mode State")
 
 # --- Charts Section ---
 st.divider()

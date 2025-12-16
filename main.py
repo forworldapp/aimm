@@ -4,11 +4,24 @@ from core.config import Config
 from strategies.market_maker import MarketMaker
 
 # Setup Logging
+import os
+from logging.handlers import RotatingFileHandler
+
+os.makedirs("logs", exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        RotatingFileHandler(os.path.join("logs", "bot.log"), maxBytes=5*1024*1024, backupCount=3)
+    ]
 )
 logger = logging.getLogger("Main")
+
+# Suppress noisy logs
+logging.getLogger("pysdk").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 async def main():
     logger.info("Starting GRVT Bot...")
@@ -47,7 +60,7 @@ if __name__ == "__main__":
     def get_lock():
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            s.bind(("127.0.0.1", 45432))
+            s.bind(("127.0.0.1", 45433)) # Changed port to avoid conflict
             return s
         except socket.error:
             return None

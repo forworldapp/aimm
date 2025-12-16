@@ -299,25 +299,40 @@ class PaperGrvtExchange(GrvtExchange):
 
     # --- State Saving ---
 
+    def set_market_regime(self, regime: str):
+        self.market_regime = regime
+
     def _save_status(self):
-        """Save current snapshot for dashboard using atomic write."""
-        try:
-            status = {
-                "timestamp": time.time(),
-                "balance": self.paper_balance,
-                "position": self.paper_position,
-                "mid_price": self.last_mid_price,
-                "open_orders": len([o for o in self.paper_orders.values() if o['status'] == 'open'])
-            }
-            # Atomic Write: Write to tmp file then rename to avoid read conflicts
-            temp_file = self.status_file + ".tmp"
-            with open(temp_file, "w") as f:
-                json.dump(status, f)
-                f.flush()
-                os.fsync(f.fileno()) # Ensure write to disk
-            os.replace(temp_file, self.status_file)
-        except Exception as e:
-            self.logger.error(f"Failed to save paper status: {e}")
+        """Save current snapshot for dashboard. Retry on PermissionError."""
+        status = {
+            "timestamp": time.time(),
+            "balance": self.paper_balance,
+            "position": self.paper_position,
+            "mid_price": self.last_mid_price,
+            "open_orders": len([o for o in self.paper_orders.values() if o['status'] == 'open']),
+            "market_regime": getattr(self, 'market_regime', 'unknown')
+        }
+        
+        retries = 5
+        while retries > 0:
+            try:
+                # Atomic write: write to tmp, then replace
+                tmp_file = self.status_file + ".tmp"
+                with open(tmp_file, "w") as f:
+                    json.dump(status, f)
+                    f.flush()
+                    os.fsync(f.fileno())
+                
+                os.replace(tmp_file, self.status_file)
+                break # Success
+            except (PermissionError, OSError) as e:
+                retries -= 1
+                time.sleep(0.05) # Wait 50ms
+                if retries == 0:
+                    self.logger.warning(f"Failed to save paper status after retries: {e}")
+            except Exception as e:
+                self.logger.error(f"Error saving status: {e}")
+                break
 
     def _save_history(self):
         """Append current equity to history CSV."""

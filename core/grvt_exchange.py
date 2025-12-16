@@ -71,25 +71,41 @@ class GrvtExchange(ExchangeInterface):
             self.logger.error(f"Error fetching balance: {e}")
             return {}
 
-    async def place_limit_order(self, symbol: str, side: str, price: float, quantity: float) -> str:
+    async def place_limit_order(self, symbol: str, side: str, price: float, quantity: float) -> Optional[str]:
         """
-        Places a limit order using the SDK.
+        Places a limit order using the SDK with retry logic.
         """
-        if not self.exchange: return ""
-        try:
-            # CCXT standard: create_order(symbol, type, side, amount, price)
-            order = self.exchange.create_order(
-                symbol=symbol,
-                type='limit',
-                side=side,
-                amount=quantity,
-                price=price
-            )
-            self.logger.info(f"Order placed: {order['id']}")
-            return order['id']
-        except Exception as e:
-            self.logger.error(f"Failed to place order: {e}")
-            raise
+        if not self.exchange: return None
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # CCXT standard: create_order(symbol, type, side, amount, price)
+                order = self.exchange.create_order(
+                    symbol=symbol,
+                    type='limit',
+                    side=side,
+                    amount=quantity,
+                    price=price
+                )
+                self.logger.info(f"Order placed: {order['id']}")
+                return order['id']
+            except Exception as e:
+                err_msg = str(e).lower()
+                if "rate limit" in err_msg:
+                    wait_time = 1.0 * (attempt + 1)
+                    self.logger.warning(f"Rate limited. Waiting {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                elif "insufficient" in err_msg:
+                    self.logger.error(f"Insufficient balance: {e}")
+                    return None # Don't retry
+                else:
+                    self.logger.error(f"Order failed (attempt {attempt+1}/{max_retries}): {e}")
+                    if attempt == max_retries - 1:
+                        return None
+                    await asyncio.sleep(0.5)
+        return None
 
     async def cancel_order(self, symbol: str, order_id: str):
         if not self.exchange: return

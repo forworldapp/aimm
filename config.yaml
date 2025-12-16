@@ -8,7 +8,7 @@ risk:
   max_position_usd: 1000.0
 strategy:
   entry_anchor_mode: true
-  trend_strategy: 'adaptive' # Options: 'off' (Pure Grid), 'ma_trend' (Always Skew), 'adaptive' (Auto Detect)
+  trend_strategy: 'combo' # Options: 'off', 'ma_trend', 'adaptive', 'adx', 'atr', 'chop', 'combo'
   grid_layers: 5
   name: market_maker
   order_amount: 0.001

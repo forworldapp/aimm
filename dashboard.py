@@ -48,7 +48,7 @@ current_strategy = config_data.get('strategy', {}).get('trend_strategy', 'adapti
 if str(current_strategy).lower() == 'true': current_strategy = 'ma_trend'
 if str(current_strategy).lower() == 'false': current_strategy = 'off'
 
-trend_options = ['off', 'ma_trend', 'adaptive', 'adx', 'atr', 'chop', 'combo']
+trend_options = ['off', 'ma_trend', 'adaptive', 'adx', 'atr', 'chop', 'combo', 'rsi', 'bollinger']
 try:
     idx = trend_options.index(current_strategy)
 except:
@@ -150,7 +150,8 @@ if not status and st.session_state.last_valid_status:
 
 # --- Metrics Section ---
 st.subheader("📊 Live Performance")
-col1, col2, col3, col4, col5 = st.columns(5)
+# Adjust column ratios to give more space to Regime (col5)
+col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 0.7, 1.8])
 
 balance = status.get('balance', {})
 pos = status.get('position', {})
@@ -174,10 +175,17 @@ with col3:
 with col4:
     open_orders = status.get('open_orders', 0)
     st.metric("Open Orders", open_orders)
-    
-with col5:
-    regime = status.get('market_regime', 'N/A').upper()
-    st.metric("🚦 Regime", regime, help="Adaptive Mode State")
+
+# Move Regime to full width box to prevent truncation
+regime = status.get('market_regime', 'N/A').upper()
+if "BUY" in regime:
+    st.success(f"🚦 Regime: {regime}")
+elif "SELL" in regime:
+    st.error(f"🚦 Regime: {regime}")
+else:
+    st.info(f"🚦 Regime: {regime}")
+# with col5:
+#    st.metric("🚦 Regime", regime, help="Adaptive Mode State")
 
 # --- Charts Section ---
 st.divider()

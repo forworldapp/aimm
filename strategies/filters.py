@@ -1,3 +1,12 @@
+"""
+Strategy Filters Module (V1.4)
+------------------------------
+Contains technical indicator logic used by the Market Maker strategy.
+- RSI: Relative Strength Index
+- Bollinger Bands: Volatility bands for mean reversion
+- ATR: Average True Range for volatility measurement
+"""
+
 import pandas as pd
 import numpy as np
 from abc import ABC, abstractmethod
@@ -177,3 +186,97 @@ class ComboFilter(TrendFilter):
             return 'trending'
             
         return 'ranging'
+
+class RSIFilter(TrendFilter):
+    """
+    RSI Filter for Overbought/Oversold detection.
+    """
+    def __init__(self, period=14, overbought=70, oversold=30):
+        self.period = period
+        self.overbought = overbought
+        self.oversold = oversold
+
+    def analyze(self, df):
+        """
+        Returns:
+        - 'overbought' if RSI > 70
+        - 'oversold' if RSI < 30
+        - 'neutral' otherwise
+        - 'waiting' if insufficient data
+        """
+        if len(df) < self.period + 1:
+            return 'waiting'
+        
+        # Calculate RSI using pandas
+        close_delta = df['close'].diff()
+        up = close_delta.clip(lower=0)
+        down = -1 * close_delta.clip(upper=0)
+        
+        ma_up = up.ewm(com=self.period - 1, adjust=True, min_periods=self.period).mean()
+        ma_down = down.ewm(com=self.period - 1, adjust=True, min_periods=self.period).mean()
+        
+        rsi = ma_up / (ma_up + ma_down) * 100
+        
+        current_rsi = rsi.iloc[-1]
+        self.last_rsi = current_rsi # Store for display
+        
+        if current_rsi > self.overbought:
+            return 'overbought'
+        elif current_rsi < self.oversold:
+            return 'oversold'
+        else:
+            return 'neutral'
+            
+    @property
+    def name(self):
+        return f"RSI({self.period})"
+        
+class BollingerFilter(TrendFilter):
+    """
+    Bollinger Bands Filter for Mean Reversion.
+    Buy at Lower Band, Sell at Upper Band.
+    """
+    def __init__(self, period=20, std_dev=2.0):
+        self.period = period
+        self.std_dev = std_dev
+        self.last_pct_b = 0.5 # Track %B for display
+
+    def analyze(self, df):
+        """
+        Returns:
+        - 'buy_signal' if Price <= Lower Band
+        - 'sell_signal' if Price >= Upper Band
+        - 'neutral' otherwise
+        - 'waiting' if insufficient data
+        """
+        if len(df) < self.period:
+            return 'waiting'
+            
+        close = df['close']
+        
+        # Calculate Bollinger Bands
+        ma = close.rolling(window=self.period).mean()
+        std = close.rolling(window=self.period).std()
+        
+        upper = ma + (std * self.std_dev)
+        lower = ma - (std * self.std_dev)
+        
+        current_close = close.iloc[-1]
+        current_upper = upper.iloc[-1]
+        current_lower = lower.iloc[-1]
+        
+        # Calculate %B (Percent Bandwidth) for display
+        # %B = (Price - Lower) / (Upper - Lower)
+        if current_upper != current_lower:
+            self.last_pct_b = (current_close - current_lower) / (current_upper - current_lower)
+        
+        if current_close <= current_lower:
+            return 'buy_signal'
+        elif current_close >= current_upper:
+            return 'sell_signal'
+        else:
+            return 'neutral'
+            
+    @property
+    def name(self):
+        return f"BB({self.period}, {self.std_dev})"

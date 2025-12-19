@@ -9,8 +9,12 @@ Features:
 - Aggressive Entry Mode (Maximize fill rate on signals).
 
 Author: Antigravity
-Version: 1.4.0
+Version: 1.4.1 (Hotfix)
 Last Updated: 2025-12-18
+Changelog:
+- Fixed Persistence: Properly restoring Paper Exchange state on restart.
+- Fixed Inventory Logic: Added missing inventory initialization and sync for exit logic.
+- Fixed Import Error: Corrected filter module imports.
 """
 
 import sys
@@ -31,7 +35,7 @@ from core.risk_manager import RiskManager
 from core.paper_exchange import PaperGrvtExchange # Assuming this is needed based on the instruction's import list, though not used in the provided snippet.
 
 # New Filters Import
-from strategies.filters import RSIFilter, MAFilter, ADXFilter, ATRFilter, ChoppinessFilter, BollingerFilter, ComboFilter, ChopFilter
+from strategies.filters import RSIFilter, MAFilter, ADXFilter, ATRFilter, BollingerFilter, ComboFilter, ChopFilter
 
 
 def round_tick_size(price, tick_size):
@@ -68,6 +72,7 @@ class MarketMaker:
         
         # Risk State
         self.initial_equity = None
+        self.inventory = 0.0 # Position tracking
 
         # Load Params & Initialize Filter
         self._load_params()
@@ -331,6 +336,7 @@ class MarketMaker:
         self._update_history(mid_price)
         self._update_candle(mid_price, time.time())
         current_pos_qty = position.get('amount', 0.0)
+        self.inventory = current_pos_qty # Sync for logic use
         
         # Log Status (Every 10 cycles or on trade to reduce noise, roughly every 30s)
         # Or just log every cycle for debugging now

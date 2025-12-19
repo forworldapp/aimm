@@ -59,7 +59,33 @@ class PaperGrvtExchange(GrvtExchange):
         if not os.path.exists(self.trade_file):
             with open(self.trade_file, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(["timestamp", "symbol", "side", "price", "quantity", "cost", "fee", "realized_pnl", "action"])
+                writer.writerow(["order_id", "side", "price", "amount", "timestamp"])
+
+        # Persistence: Try to load previous state from JSON to survive restarts
+        # This prevents the bot from losing track of positions and equity.
+        try:
+            if os.path.exists(self.status_file):
+                with open(self.status_file, 'r') as f:
+                    saved_status = json.load(f)
+                    
+                    # Restore Balance
+                    if 'balance' in saved_status:
+                        self.paper_balance = saved_status['balance']
+                        
+                    # Restore Position
+                    if 'position' in saved_status:
+                        # Dashboard uses 'amount', we use 'amount' internally too.
+                        # Ensure fields match our internal structure
+                        pos_data = saved_status['position']
+                        self.paper_position = {
+                            'amount': float(pos_data.get('amount', 0.0)),
+                            'entryPrice': float(pos_data.get('entryPrice', 0.0)),
+                            'unrealizedPnL': float(pos_data.get('unrealizedPnL', 0.0))
+                        }
+                    
+                    self.logger.info(f"Restored Paper State. Bal: {self.paper_balance}, Pos: {self.paper_position}")
+        except Exception as e:
+            self.logger.error(f"Failed to restore paper state: {e}")
 
     async def connect(self):
         # Prevent multiple monitor loops

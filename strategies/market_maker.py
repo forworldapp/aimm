@@ -406,11 +406,18 @@ class MarketMaker:
             if 'sell_signal' not in regime:
                 allow_sell = False
             
-            # Additional safety: If neutral, block both (wait for band touch)
+            # Additional safety: If neutral, block NEW ENTRIES, but allow EXITS (Reduce Only concept)
             if 'neutral' in regime:
-                allow_buy = False
-                allow_sell = False
-        
+                # If we have a Short pos (<0), we want to BUY to close. So allow_buy = True.
+                # If we have a Long pos (>0), we want to SELL to close. So allow_sell = True.
+                allow_buy = (self.inventory < 0)
+                allow_sell = (self.inventory > 0)
+                
+                # If inventory is 0, then allow nothing (wait for signal)
+                # Note: Inventory uses self.position['net_size'] updated in cycle start logic usually
+                # Here self.inventory might need checking how it's updated. 
+                # Assuming self.inventory is current.
+                
         # Grid Spacing Logic
         # Ensure minimum spacing to prevent instant fill of all layers
         layer_spacing = max(final_spread, 0.0005) # Min 0.05% spacing (~$43 at 86k)

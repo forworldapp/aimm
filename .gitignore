@@ -42,11 +42,10 @@ coverage.xml
 # VS Code
 .vscode/
 
-# Environment Variables
+# Grvt Bot Data (Exclude large history file# User Data
+data/
+logs/
 .env
-
-# Grvt Bot Data (Exclude large history files)
-data/*.csv
 data/*.json
 # Keep the directory structure
 !data/.gitkeep

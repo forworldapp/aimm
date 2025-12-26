@@ -8,13 +8,21 @@
 - **Selectable Strategy Mode**: Dashboard now allows choosing between `off`, `ma_trend`, `adaptive`, `adx`, `atr`, `chop`, `combo`.
 - **Candle Processing**: `MarketMaker` now builds real-time 1m OHLC candles for technical indicators.
 - **Testing Optimization**: Temporarily reduced `Combo` requirement to 7 candles (approx. 15m wait) for faster validation. (To be restored to 14 in v1.4).
+## [v1.4.2] - 2025-12-25
+### Added
+- **Signal Latch Logic**: Retains 'Signal' mode (0.5% stop loss) even if indicators revert to neutral, until RSI enters safe zone (40-60) or position clears.
+- **Regime-Based Risk Management**: Strict Profit-Only (0% tolerance) in Neutral vs. Stop-Loss Allowed (0.5%) in Signal mode.
+- **Dashboard Enhancements**: detailed view of Open Orders (Price & Amount) in expandable section.
 
+### Changed
+- **Dynamic Spread**: Implemented USD-based clamping ($100 Min ~ $200 Max) per grid level (Dynamic Spread V2).
+- **RSI Thresholds**: Adjusted Latch reset triggers to RSI 40 (Buy) and 60 (Sell).
+- **Inventory Skew**: Skew factor confirmed at 0.1% for gentle inventory management.
+
+## [v1.4.1] - 2025-12-20
 ### Fixed
-- **Fatal Error**: Fixed `name 'pd' is not defined` error caused by import issues in `MarketMaker`.
-- **AttributeError**: Implemented missing `get_account_summary` in `PaperGrvtExchange`.
-- **Infinite Waiting**: Fixed `MAFilter` waiting indefinitely by optimizing window size.
+- Retention logic comments and minor stability fixes.
 
-## [v1.2.0] - 2025-12-15
 ### Added
 - **Adaptive Market Making**: New strategy mode `'adaptive'` that automatically detects market regime.
   - **Ranging Mode**: When Moving Average divergence < 0.03%, Trend Skew is disabled to prevent whipsaws.

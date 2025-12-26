@@ -3,24 +3,25 @@ exchange:
   mode: paper
   symbol: BTC_USDT_Perp
 risk:
-  inventory_skew_factor: 0.001 # Reduced to 0.1% to hold positions longer (delayed reduction)
-  max_drawdown_pct: 0.15   # Increased to 15% (Less Sensitive)
+  inventory_skew_factor: 0.001
+  max_drawdown_pct: 0.15
   max_position_usd: 1000.0
 strategy:
-  entry_anchor_mode: true
-  trend_strategy: 'bollinger' # Options: 'off', 'ma_trend', 'adaptive', 'adx', 'atr', 'chop', 'combo', 'rsi', 'bollinger'
-  grid_layers: 5
-  name: market_maker
-  order_amount: 0.001
-  refresh_interval: 5
-  spread_pct: 0.001 # Reduced to 0.1% for better fills
-  rsi:
-    period: 14
-    overbought: 70
-    oversold: 30
   bollinger:
     period: 20
     std_dev: 2.0
   dynamic_spread:
     enabled: true
-    reference_atr: 100.0 # ATR value where spread multiplier is 1.0 (approx ~86k * 0.12%)
+    reference_atr: 100.0
+  entry_anchor_mode: true
+  grid_layers: 5
+  name: market_maker
+  order_amount: 0.0
+  order_size_usd: 100.0
+  refresh_interval: 5
+  rsi:
+    overbought: 70
+    oversold: 30
+    period: 14
+  spread_pct: 0.0025
+  trend_strategy: bollinger

@@ -26,31 +26,37 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 async def main():
     logger.info("Starting GRVT Bot...")
     
-    # 0. Load Config
-    Config.load("config.yaml")
-
-    # 1. Initialize Exchange
-    mode = Config.get("exchange", "mode", "paper")
-    
-    if mode == "paper":
-        from core.paper_exchange import PaperGrvtExchange
-        exchange = PaperGrvtExchange()
-        logger.info("Initialized Paper Exchange")
-    else:
-        from core.grvt_exchange import GrvtExchange
-        exchange = GrvtExchange()
-        logger.info("Initialized Real Exchange")
-    
-    # 2. Connect
-    await exchange.connect()
-    
-    # 3. Simple Check (Fetch Balance)
-    balance = await exchange.get_balance()
-    logger.info(f"Initial Balance: {balance}")
-    
-    # 4. Run Strategy
-    strategy = MarketMaker(exchange)
-    await strategy.run()
+    # 4. Run Strategy (with restart loop)
+    while True:
+        # 0. Load Config (Reload on restart)
+        Config.load("config.yaml")
+        
+        # 1. Initialize Exchange (Re-init for new symbol/settings)
+        mode = Config.get("exchange", "mode", "paper")
+        if mode == "paper":
+            from core.paper_exchange import PaperGrvtExchange
+            exchange = PaperGrvtExchange() # Will load new symbol from config
+        else:
+            from core.grvt_exchange import GrvtExchange
+            # Graceful disconnect old exchange if possible? 
+            # Currently GrvtExchange in core doesn't need explicit close but good practice.
+            exchange = GrvtExchange()
+            
+        await exchange.connect()
+        
+        # 2. Run Strategy
+        strategy = MarketMaker(exchange)
+        logger.info(f"Starting Strategy on {exchange.symbol if mode=='paper' else 'Real'}")
+        
+        exit_code = await strategy.run()
+        
+        if exit_code == 'restart':
+            logger.info("Restarting Bot Process...")
+            await asyncio.sleep(2) # Cooldown
+            continue # Loop again
+        else:
+            logger.info("Bot Stopped.")
+            break
 
 if __name__ == "__main__":
     import socket

@@ -82,18 +82,22 @@ class MarketMaker:
         Config.load("config.yaml") # Force reload
         
         self.base_spread = float(Config.get("strategy", "spread_pct", 0.0002))
-        self.amount = float(Config.get("strategy", "order_amount", 0.001))
+        self.order_size_usd = float(Config.get("strategy", "order_size_usd", 100.0))
+        self.amount = 0.0 # Deprecated, auto-calc
+        # self.amount = float(Config.get("strategy", "order_amount", 0.001))
         self.refresh_interval = int(Config.get("strategy", "refresh_interval", 3))
         self.skew_factor = float(Config.get("risk", "inventory_skew_factor", 0.05))
         self.grid_layers = int(Config.get("strategy", "grid_layers", 3))
         self.entry_anchor_mode = Config.get("strategy", "entry_anchor_mode", False)
         
         # Strategy Selector
-        strategy_name = Config.get("strategy", "trend_strategy", 'adaptive')
-        self.filter_strategy = self._initialize_filter(strategy_name)
+        self.trend_strategy = Config.get("strategy", "trend_strategy", "bollinger")
+        self.latched_regime = None # Memory for signal latch
+        
+        # Filters_strategy = self._initialize_filter(strategy_name)
         self.rsi_filter = RSIFilter() # Auxiliary filter
         
-        self.logger.info(f"Loaded Params: Layers={self.grid_layers}, Strategy={strategy_name} ({self.filter_strategy.name if self.filter_strategy else 'OFF'})")
+        self.logger.info(f"Loaded Params: Layers={self.grid_layers}, Strategy={self.trend_strategy} ({self.filter_strategy.name if self.filter_strategy else 'OFF'})")
         
         self.risk_manager = RiskManager()
         self.risk_manager.max_drawdown = float(Config.get("risk", "max_drawdown_pct", 0.10))
@@ -146,6 +150,12 @@ class MarketMaker:
                         self.is_active = False
                         self.is_running = False
                         self.logger.info("Shutdown sequence initiated.")
+
+                    elif command == "restart":
+                        self.logger.info("Received command: restart")
+                        self.is_running = False # Break main loop
+                        os.remove(self.command_file)
+                        return 'restart'
 
                     # Clear command file
                     os.remove(self.command_file)
@@ -255,20 +265,18 @@ class MarketMaker:
         return min(multiplier, 5.0)
 
     def _calculate_dynamic_spread(self):
-        """Calculate spread based on ATR (Volatility)."""
+        """Calculate spread based on ATR (Volatility) with USD limits."""
         conf = Config.get("strategy", "dynamic_spread", {})
         if not conf.get('enabled', False):
             return self.base_spread
             
-        if self.filter_strategy and hasattr(self.filter_strategy, 'atr'):
-            # If using Combo/ATR filter, re-use its ATR
-            # But simpler to just calculate distinct ATR here using candles
-            pass
-            
         if len(self.candles) < 20:
             return self.base_spread
             
-        # Calculate ATR(14) - Simple approximation
+        # Current Price (Approx from close)
+        current_price = self.candles['close'].iloc[-1]
+        
+        # Calculate ATR(14)
         high = self.candles['high']
         low = self.candles['low']
         close = self.candles['close']
@@ -279,17 +287,22 @@ class MarketMaker:
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         atr = tr.rolling(14).mean().iloc[-1]
         
+        # ATR Logic
         ref_atr = conf.get('reference_atr', 100.0)
-        
-        # Multiplier = Current ATR / Reference ATR
-        # Example: Ref=100. Current=50 -> Spread * 0.5 (Narrower)
-        # Example: Current=200 -> Spread * 2.0 (Wider)
         multiplier = atr / ref_atr
+        multiplier = max(0.5, min(multiplier, 3.0)) # 0.5x ~ 3.0x
         
-        # Clamp multiplier
-        multiplier = max(0.5, min(multiplier, 3.0))
+        raw_spread_pct = self.base_spread * multiplier
+        raw_spread_usd = current_price * raw_spread_pct
         
-        return self.base_spread * multiplier
+        # Enforce User Limits ($30 ~ $200) -> Adjusted to $100 min per observation
+        min_usd = 100.0
+        max_usd = 200.0
+        
+        final_usd = max(min_usd, min(max_usd, raw_spread_usd))
+        final_pct = final_usd / current_price if current_price > 0 else self.base_spread
+        
+        return final_pct
     
     async def check_drawdown(self):
         """Check Max Drawdown safety stop."""
@@ -336,123 +349,139 @@ class MarketMaker:
         self._update_history(mid_price)
         self._update_candle(mid_price, time.time())
         current_pos_qty = position.get('amount', 0.0)
-        self.inventory = current_pos_qty # Sync for logic use
+        self.inventory = current_pos_qty
         
-        # Log Status (Every 10 cycles or on trade to reduce noise, roughly every 30s)
-        # Or just log every cycle for debugging now
+        # Log Status
         rsi_status = self.rsi_filter.analyze(self.candles)
-        self.logger.info(f"Pos: {current_pos_qty:.4f} | Mid: {mid_price:.2f} | Regime: {self._detect_market_regime()} | RSI: {rsi_status} | Equity: {position.get('unrealizedPnL', 0):.2f}")
-
+        # 1. Detect Regime & Apply Latch
+        current_regime = self._detect_market_regime()
+        rsi_status = self.rsi_filter.analyze(self.candles) # Update last_rsi
+        last_rsi = getattr(self.rsi_filter, 'last_rsi', 50.0)
         
+        # Reset Latch if flat
+        if current_pos_qty == 0:
+            self.latched_regime = None
+        
+        # Reset Latch based on RSI thresholds (Hysteresis)
+        # User Rule: Keep Buy Latch if RSI <= 40 / Keep Sell Latch if RSI >= 60
+        if self.latched_regime == 'buy_signal' and last_rsi > 40:
+             self.latched_regime = None # Release to Neutral
+        elif self.latched_regime == 'sell_signal' and last_rsi < 60:
+             self.latched_regime = None # Release to Neutral
+
+        # Update Latch if new signal appears (Overrides Reset)
+        if 'buy_signal' in current_regime or 'sell_signal' in current_regime:
+            self.latched_regime = current_regime
+            
+        # Use Latched Regime if Current is Neutral but we have a Latch
+        effective_regime = current_regime
+        if current_regime == 'neutral' and self.latched_regime:
+             effective_regime = self.latched_regime
+             # Add visual indicator
+             effective_regime += " (Latched)"
+             
+        # Log Status
+        self.logger.info(f"Pos: {current_pos_qty:.4f} | Mid: {mid_price:.2f} | Regime: {effective_regime} | RSI: {last_rsi:.1f} | Equity: {position.get('unrealizedPnL', 0):.2f}")
+
         # 2. Calculate Parameters
-        max_skew_qty = self.amount * 20 
+        # Fix Division by Zero: Use calculated qty based on price
+        estimated_qty = (self.order_size_usd / mid_price) if mid_price > 0 else self.amount
+        if estimated_qty <= 0: estimated_qty = 0.001 # Fallback
+        
+        max_skew_qty = estimated_qty * 20 
         inventory_ratio = max(-1.0, min(1.0, current_pos_qty / max_skew_qty))
         inventory_skew = inventory_ratio * self.skew_factor * -1 
         trend_skew = self._get_trend_skew()
         total_skew = inventory_skew + trend_skew
         
-        vol_mult = self._get_volatility_multiplier() # Keep for logging if needed
-        # final_spread = self.base_spread * vol_mult # Old static spread logic
-        
-        # Determine Spread: Dynamic normally, but Aggressive on Signal
-        regime = self._detect_market_regime() # Get current state
-        if 'buy_signal' in regime or 'sell_signal' in regime:
-            # Aggressive Entry: Reduce spread to near zero to ensure fill
+        # Determine Spread based on EFFECTIVE regime
+        # If Signal (or Latched Signal), use aggressive tight spread? 
+        # Actually logic says: if signal, tight spread.
+        if 'buy_signal' in effective_regime or 'sell_signal' in effective_regime:
+            # Aggressive Entry: Tight spread (10% of base) for execution
             final_spread = self.base_spread * 0.1 
         else:
-            final_spread = self._calculate_dynamic_spread() # Normal Dynamic Spread
+            final_spread = self._calculate_dynamic_spread()
         
         skewed_mid = mid_price * (1 + total_skew)
         target_bid = round_tick_size(skewed_mid * (1 - final_spread / 2), self.tick_size)
         target_ask = round_tick_size(skewed_mid * (1 + final_spread / 2), self.tick_size)
 
-        # Drawdown & Risk check (in place order or separate)
-        
-        # --- 4. Take Profit / Entry Guard ---
+        # Dropdown Check (Pass)
+
+        # --- 3. Entry Guard / Profit Protection (Anchor) ---
         entry_price = position.get('entryPrice', 0.0)
         
-        # Entry Anchor Mode: Don't buy higher than entry or sell lower than entry (Pyramiding check)
-        # But this logic was flawed in previous versions. Fixed here?
-        # If we have a long position, we want to SELL (Ask). We should only sell if price > entry (profit).
-        # We also might want to buy more (DCA).
-        # The user wanted "Entry Anchor" to prevent "Unfavorable Increase".
-        # e.g. If Long, don't buy HIGHER than avg entry. Only buy LOWER.
         if self.entry_anchor_mode and current_pos_qty != 0 and entry_price > 0:
+            # Regime-Based Stop Loss Logic
+            loss_tolerance = 0.0 # Default: Zero Tolerance (Strictly Profit Only)
+            
+            # If Signal detected (Trend) OR Latched, loosen stop loss to allow escape
+            if 'buy_signal' in effective_regime or 'sell_signal' in effective_regime:
+                 loss_tolerance = 0.005 # Allow 0.5% loss to cut bad positions in trend
+            
+            # Neutral: Strict "Hold" (loss_tolerance ~ 0)
+            
             if current_pos_qty > 0: # Long
-                 # Allow buying (bids) only if target_bid < entry_price
-                 target_bid = min(target_bid, entry_price)
+                 # DCA: Buy if price < Entry
+                 target_bid = min(target_bid, entry_price * 0.9995)
+                 # Anchor: Limit Sell Price
+                 limit_price = entry_price * (1.0 - loss_tolerance) + (entry_price * 0.0005) # Adjust slightly
+                 target_ask = max(target_ask, entry_price * (1 - loss_tolerance)) 
+                 
             elif current_pos_qty < 0: # Short
-                 # Allow selling (asks) only if target_ask > entry_price
-                 target_ask = max(target_ask, entry_price)
+                 # DCA: Sell if price > Entry
+                 target_ask = max(target_ask, entry_price * 1.0005)
+                 # Anchor: Limit Buy Price
+                 target_bid = min(target_bid, entry_price * (1 + loss_tolerance))
 
-        # Place Grid Orders (Asymmetric Smart Update)
-        # ... For simplicity in this rewrite, I will use a simple efficient placement logic
-        # But the USER had "Smart Order Update" logic before. I should try to preserve it if possible.
-        # However, I don't have the full code of the smart logic in my "view_file".
-        # I will implement a robust 5-layer grid here.
-        
-        # 3. Generate Grid Orders
-        buy_orders = []
-        sell_orders = []
-        
-        # RSI Check:
+        # --- 4. Permission Flags ---
         allow_buy = rsi_status != 'overbought'
         allow_sell = rsi_status != 'oversold'
         
-        # Bollinger Check (if active)
-        # If Bollinger is the main strategy, only allow entry on signals
         if self.filter_strategy and 'BB' in self.filter_strategy.name:
-            regime = self._detect_market_regime() # Already calculated/logged, but get clean value
-            # Note: _detect_market_regime returns string like "BUY_SIGNAL"
-            # Dashboard string might be "BUY_SIGNAL (BB...)"
-            
-            # Simple logic: If NOT buy_signal, disallow buy. 
+            # Signal Logic
             if 'buy_signal' not in regime:
-                allow_buy = False
+                allow_buy = False # Default block unless neutral logic overrides
             if 'sell_signal' not in regime:
                 allow_sell = False
-            
-            # Additional safety: If neutral, block NEW ENTRIES, but allow EXITS (Reduce Only concept)
+
+            # Neutral Logic: Allow Grid Trading (Accumulation)
+            # Re-enabled per user request (Step 3329)
             if 'neutral' in regime:
-                # If we have a Short pos (<0), we want to BUY to close. So allow_buy = True.
-                # If we have a Long pos (>0), we want to SELL to close. So allow_sell = True.
-                allow_buy = (self.inventory < 0)
-                allow_sell = (self.inventory > 0)
+                allow_buy = True
+                allow_sell = True
                 
-                # If inventory is 0, then allow nothing (wait for signal)
-                # Note: Inventory uses self.position['net_size'] updated in cycle start logic usually
-                # Here self.inventory might need checking how it's updated. 
-                # Assuming self.inventory is current.
-                
-        # Grid Spacing Logic
-        # Ensure minimum spacing to prevent instant fill of all layers
-        layer_spacing = max(final_spread, 0.0005) # Min 0.05% spacing (~$43 at 86k)
+        # --- 5. Generate Grid Orders ---
+        buy_orders = []
+        sell_orders = []
         
+        # Grid Spacing: 0.12% (Adjusted per user request: ~$100 @ 87k)
+        layer_spacing = max(final_spread, 0.0012) 
+
         for i in range(self.grid_layers):
-            # spread_mult = 1 + (i * 0.5) # Not used effectively before
-            
-            # Layer 0 is at target_bid/ask
-            # Layer 1 is at target_bid * (1 - spacing)
-            # ...
+            # Linearly spaced grid
             bid_p = round_tick_size(target_bid * (1 - (layer_spacing * i)), self.tick_size)
             ask_p = round_tick_size(target_ask * (1 + (layer_spacing * i)), self.tick_size)
             
-            # Amount distribution (Martingale-ish?)
-            qty = self.amount
+            # Amount distribution (USD Based)
+            if self.order_size_usd > 0:
+                raw_qty = self.order_size_usd / mid_price
+                # Round to 5 decimals for safety (GRVT supports small fractions usually)
+                qty = round(raw_qty, 5)
+                # Enforce min qty if needed (e.g. 0.0001)
+                qty = max(qty, 0.0001)
+            else:
+                qty = self.amount # Old fixed quantity fallback
             
-            # Add to list (if allowed)
             if allow_buy:
                 buy_orders.append((bid_p, qty))
             if allow_sell:
                 sell_orders.append((ask_p, qty))
             
-        # Place Orders
-        # To avoid rate limits, we cancel all then place (Smart Update is better but complex to restore blindly)
-        # Let's use cancel_all + batch place for reliability in this version
-        
+        # --- 6. Place Orders ---
         await self.exchange.cancel_all_orders(self.symbol)
         
-        # Limit placement rate
         for p, q in buy_orders:
              await self.exchange.place_limit_order(self.symbol, 'buy', p, q)
         for p, q in sell_orders:
@@ -463,7 +492,10 @@ class MarketMaker:
         self.is_running = True
         while self.is_running:
             try:
-                await self.check_command()
+                cmd_res = await self.check_command()
+                if cmd_res == 'restart':
+                    return 'restart' # Signal main to restart
+
                 if not self.is_active:
                     await asyncio.sleep(2)
                     continue
@@ -476,3 +508,4 @@ class MarketMaker:
                 self.logger.error(f"Error in strategy cycle: {e}")
             
             await asyncio.sleep(self.refresh_interval)
+        return 'stop'

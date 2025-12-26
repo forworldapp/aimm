@@ -44,10 +44,11 @@ class PaperGrvtExchange(GrvtExchange):
         self.paper_order_id_counter = 0
         self.last_mid_price = 0.0
         
+        self.symbol = Config.get("exchange", "symbol", "BTC_USDT_Perp")
         self.monitor_task = None
-        self.status_file = os.path.join("data", "paper_status.json")
-        self.history_file = os.path.join("data", "pnl_history.csv")
-        self.trade_file = os.path.join("data", "trade_history.csv")
+        self.status_file = os.path.join("data", f"paper_status_{self.symbol}.json")
+        self.history_file = os.path.join("data", f"pnl_history_{self.symbol}.csv")
+        self.trade_file = os.path.join("data", f"trade_history_{self.symbol}.csv")
         os.makedirs("data", exist_ok=True)
         
         # Initialize History Files
@@ -59,7 +60,7 @@ class PaperGrvtExchange(GrvtExchange):
         if not os.path.exists(self.trade_file):
             with open(self.trade_file, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(["order_id", "side", "price", "amount", "timestamp"])
+                writer.writerow(["timestamp", "symbol", "side", "price", "amount", "cost", "rebate", "realized_pnl", "note"])
 
         # Persistence: Try to load previous state from JSON to survive restarts
         # This prevents the bot from losing track of positions and equity.
@@ -200,7 +201,8 @@ class PaperGrvtExchange(GrvtExchange):
         side = order['side']
         
         cost = qty * price
-        rebate = cost * 0.00001
+        # Maker Rebate: 0.01% (1 bps) - User specific
+        rebate = cost * 0.0001 
         fee = 0 # Currently using rebate model, fee is negative rebate
         
         # Current Position
@@ -335,6 +337,10 @@ class PaperGrvtExchange(GrvtExchange):
             "balance": self.paper_balance,
             "position": self.paper_position,
             "mid_price": self.last_mid_price,
+            "open_orders_list": [
+                {'side': o['side'], 'price': o['price'], 'amount': o['quantity']}
+                for o in self.paper_orders.values() if o['status'] == 'open'
+            ],
             "open_orders": len([o for o in self.paper_orders.values() if o['status'] == 'open']),
             "market_regime": getattr(self, 'market_regime', 'unknown')
         }

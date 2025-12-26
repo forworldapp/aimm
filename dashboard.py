@@ -17,8 +17,27 @@ st.set_page_config(
 # --- Title ---
 st.title("🚀 GRVT Market Maker Bot")
 
-# --- Sidebar: Configuration ---
-st.sidebar.header("⚙️ Configuration")
+# --- Utils ---
+def load_yaml_config():
+    with open("config.yaml", "r") as f:
+        return yaml.safe_load(f)
+
+def save_yaml_config(data):
+    with open("config.yaml", "w") as f:
+        yaml.dump(data, f, default_flow_style=False)
+
+def send_command(action):
+    """Send command to bot via JSON file."""
+    command_file = os.path.join("data", "command.json")
+    try:
+        with open(command_file, "w") as f:
+            json.dump({"command": action, "action": action}, f) # Support both keys for compatibility
+    except Exception as e:
+        st.error(f"Failed to send command: {e}")
+
+# --- Sidebar Configuration ---
+st.sidebar.title("⚙️ Configuration")
+# (Rest of Sidebar)
 
 # Refresh Control
 refresh_interval = st.sidebar.slider("Refresh Interval (sec)", 1, 60, 10)
@@ -68,6 +87,9 @@ drawdown_input = st.sidebar.slider("Max Drawdown %", 0.01, 0.20, value=current_d
 current_pos_usd = float(config_data.get('risk', {}).get('max_position_usd', 1000.0))
 pos_limit = st.sidebar.number_input("Max Pos (USD)", 100.0, 10000.0, value=current_pos_usd)
 
+current_order_usd = float(config_data.get('strategy', {}).get('order_size_usd', 100.0))
+order_size_usd = st.sidebar.number_input("Order Size (USD)", 10.0, 5000.0, value=current_order_usd, step=10.0)
+
 if st.sidebar.button("💾 Apply & Reload Bot"):
     # Update Data
     if 'strategy' not in config_data: config_data['strategy'] = {}
@@ -77,7 +99,9 @@ if st.sidebar.button("💾 Apply & Reload Bot"):
     config_data['strategy']['entry_anchor_mode'] = anchor_mode
     config_data['strategy']['trend_strategy'] = target_strategy
     config_data['risk']['max_drawdown_pct'] = drawdown_input
+    config_data['risk']['max_drawdown_pct'] = drawdown_input
     config_data['risk']['max_position_usd'] = pos_limit
+    config_data['strategy']['order_size_usd'] = order_size_usd
     
     # Save YAML
     with open(CONFIG_PATH, "w") as f:
@@ -96,9 +120,43 @@ with st.sidebar.expander("📝 Advanced YAML Edit"):
     raw_yaml = yaml.dump(config_data, default_flow_style=False)
     st.text_area("Read-Only Config View", value=raw_yaml, height=200, disabled=True)
 
+st.sidebar.markdown("---")
 
-# --- Main Area: Bot Control ---
-st.subheader("🎮 Bot Control")
+# --- V1.5 Multi-Symbol Support ---
+st.sidebar.subheader("📈 Trading Pair")
+
+# Read current config directly to avoid stale state
+try:
+    with open("config.yaml", "r") as f:
+        raw_config = yaml.safe_load(f)
+        current_symbol = raw_config.get('exchange', {}).get('symbol', 'BTC_USDT_Perp')
+except:
+    current_symbol = 'BTC_USDT_Perp'
+
+available_symbols = ["BTC_USDT_Perp", "ETH_USDT_Perp", "SOL_USDT_Perp", "XRP_USDT_Perp"]
+
+# If current symbol is not in list, add it
+if current_symbol not in available_symbols:
+    available_symbols.insert(0, current_symbol)
+    
+selected_symbol = st.sidebar.selectbox("Select Pair", available_symbols, index=available_symbols.index(current_symbol))
+
+if selected_symbol != current_symbol:
+    if st.sidebar.button(f"Apply {selected_symbol} & Restart"):
+        # Update Config
+        if 'exchange' not in raw_config: raw_config['exchange'] = {}
+        raw_config['exchange']['symbol'] = selected_symbol
+        with open("config.yaml", "w") as f:
+            yaml.dump(raw_config, f)
+        
+        # Send Restart Command
+        send_command("restart")
+        st.sidebar.success(f"Switched to {selected_symbol}! Bot Restarting...")
+        time.sleep(2)
+        st.rerun()
+
+st.sidebar.markdown("---")
+st.sidebar.title("🎮 Bot Control")
 col_ctrl1, col_ctrl2, col_ctrl3 = st.columns(3)
 command_file = os.path.join("data", "command.json")
 
@@ -123,9 +181,21 @@ with col_ctrl3:
 st.divider()
 
 # --- Status Data Loading with Persistence ---
-paper_status_file = os.path.join("data", "paper_status.json")
-history_file = os.path.join("data", "pnl_history.csv")
-trade_file = os.path.join("data", "trade_history.csv")
+# --- Status Data Loading with Persistence ---
+# V1.5: Dynamic File Paths based on Symbol
+# Ensure current_symbol is loaded (it is loaded above in Sidebar section)
+if 'current_symbol' not in locals():
+    # Fallback if sidebar code didn't run yet (unlikely but safe)
+    try:
+        with open("config.yaml", "r") as f:
+            raw_c = yaml.safe_load(f)
+            current_symbol = raw_c.get('exchange', {}).get('symbol', 'BTC_USDT_Perp')
+    except:
+        current_symbol = 'BTC_USDT_Perp'
+
+paper_status_file = os.path.join("data", f"paper_status_{current_symbol}.json")
+history_file = os.path.join("data", f"pnl_history_{current_symbol}.csv")
+trade_file = os.path.join("data", f"trade_history_{current_symbol}.csv")
 
 # Initialize Session State for Status if not present to prevent flickering
 if 'last_valid_status' not in st.session_state:
@@ -175,6 +245,24 @@ with col3:
 with col4:
     open_orders = status.get('open_orders', 0)
     st.metric("Open Orders", open_orders)
+    
+    # Order Details Expander
+    orders_list = status.get('open_orders_list', [])
+    if orders_list:
+        with st.expander("Order Details", expanded=True):
+            # Sort: Buy (Desc), Sell (Asc)
+            bids = sorted([o for o in orders_list if o['side'] == 'buy'], key=lambda x: x['price'], reverse=True)
+            asks = sorted([o for o in orders_list if o['side'] == 'sell'], key=lambda x: x['price'])
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("**🟢 Bids**")
+                for o in bids:
+                    st.text(f"${o['price']:,.1f} ({o['amount']})")
+            with c2:
+                st.markdown("**🔴 Asks**")
+                for o in asks:
+                    st.text(f"${o['price']:,.1f} ({o['amount']})")
 
 # Move Regime to full width box to prevent truncation
 regime = status.get('market_regime', 'N/A').upper()
@@ -283,18 +371,19 @@ if os.path.exists(trade_file):
             df_trade['datetime'] = pd.to_datetime(df_trade['timestamp'], unit='s', utc=True)
             df_trade['datetime'] = df_trade['datetime'].dt.tz_convert('Asia/Seoul')
             
-            df_display = df_trade[['datetime', 'action', 'symbol', 'side', 'price', 'quantity', 'cost', 'fee', 'realized_pnl']].sort_values(by='datetime', ascending=False)
+            # Match new CSV Header: timestamp, symbol, side, price, amount, cost, rebate, realized_pnl, note
+            df_display = df_trade[['datetime', 'note', 'symbol', 'side', 'price', 'amount', 'cost', 'rebate', 'realized_pnl']].sort_values(by='datetime', ascending=False)
             
             st.dataframe(
                 df_display, 
                 use_container_width=True,
                 column_config={
                     "datetime": st.column_config.DatetimeColumn("Time (KST)", format="MM-DD HH:mm:ss"),
-                    "action": "Action",
+                    "note": "Action",
                     "price": st.column_config.NumberColumn("Price", format="$%.2f"),
                     "cost": st.column_config.NumberColumn("Cost", format="$%.2f"),
-                    "fee": st.column_config.NumberColumn("Fee (Rebate if +)", format="$%.4f"),
-                    "realized_pnl": st.column_config.NumberColumn("Realized PnL", format="$%.2f"),
+                    "rebate": st.column_config.NumberColumn("Fee/Rebate", format="$%.4f"),
+                    "realized_pnl": st.column_config.NumberColumn("Realized PnL", format="$%.4f"),      
                 }
             )
             

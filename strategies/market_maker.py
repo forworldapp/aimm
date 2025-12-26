@@ -208,7 +208,14 @@ class MarketMaker:
         
         if self.rsi_filter:
             rsi_val = self.rsi_filter.analyze(df)
-            rsi_num = getattr(self.rsi_filter, 'last_rsi', 0)
+            rsi_num = getattr(self.rsi_filter, 'last_rsi', 50.0)
+            
+            # [Safety Filter] Block signal if RSI does not confirm
+            if 'buy_signal' in regime and rsi_val != 'oversold':
+                regime = 'neutral' # Blocked by RSI
+            elif 'sell_signal' in regime and rsi_val != 'overbought':
+                regime = 'neutral' # Blocked by RSI
+
             if rsi_val != 'neutral' and rsi_val != 'waiting':
                  regime += f" | {rsi_val.upper()} ({rsi_num:.1f})"
             elif rsi_val == 'neutral':

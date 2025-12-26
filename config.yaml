@@ -18,7 +18,7 @@ strategy:
   name: market_maker
   order_amount: 0.0
   order_size_usd: 100.0
-  refresh_interval: 5
+  refresh_interval: 1
   rsi:
     overbought: 70
     oversold: 30

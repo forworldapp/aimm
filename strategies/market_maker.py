@@ -94,7 +94,7 @@ class MarketMaker:
         self.trend_strategy = Config.get("strategy", "trend_strategy", "bollinger")
         self.latched_regime = None # Memory for signal latch
         
-        # Filters_strategy = self._initialize_filter(strategy_name)
+        self.filter_strategy = self._initialize_filter(self.trend_strategy)
         self.rsi_filter = RSIFilter() # Auxiliary filter
         
         self.logger.info(f"Loaded Params: Layers={self.grid_layers}, Strategy={self.trend_strategy} ({self.filter_strategy.name if self.filter_strategy else 'OFF'})")
@@ -383,6 +383,10 @@ class MarketMaker:
         # Log Status
         self.logger.info(f"Pos: {current_pos_qty:.4f} | Mid: {mid_price:.2f} | Regime: {effective_regime} | RSI: {last_rsi:.1f} | Equity: {position.get('unrealizedPnL', 0):.2f}")
 
+        # Sync to Paper Exchange
+        if hasattr(self.exchange, 'set_market_regime'):
+            self.exchange.set_market_regime(effective_regime)
+
         # 2. Calculate Parameters
         # Fix Division by Zero: Use calculated qty based on price
         estimated_qty = (self.order_size_usd / mid_price) if mid_price > 0 else self.amount
@@ -441,14 +445,14 @@ class MarketMaker:
         
         if self.filter_strategy and 'BB' in self.filter_strategy.name:
             # Signal Logic
-            if 'buy_signal' not in regime:
+            if 'buy_signal' not in effective_regime:
                 allow_buy = False # Default block unless neutral logic overrides
-            if 'sell_signal' not in regime:
+            if 'sell_signal' not in effective_regime:
                 allow_sell = False
 
             # Neutral Logic: Allow Grid Trading (Accumulation)
             # Re-enabled per user request (Step 3329)
-            if 'neutral' in regime:
+            if 'neutral' in effective_regime:
                 allow_buy = True
                 allow_sell = True
                 
@@ -490,6 +494,7 @@ class MarketMaker:
     async def run(self):
         self.logger.info("Strategy Started")
         self.is_running = True
+        self.is_active = True # Force Auto-Start
         while self.is_running:
             try:
                 cmd_res = await self.check_command()

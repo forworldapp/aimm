@@ -329,6 +329,7 @@ class PaperGrvtExchange(GrvtExchange):
 
     def set_market_regime(self, regime: str):
         self.market_regime = regime
+        self._save_status() # Force save so dashboard updates immediately
 
     def _save_status(self):
         """Save current snapshot for dashboard. Retry on PermissionError."""
@@ -342,7 +343,8 @@ class PaperGrvtExchange(GrvtExchange):
                 for o in self.paper_orders.values() if o['status'] == 'open'
             ],
             "open_orders": len([o for o in self.paper_orders.values() if o['status'] == 'open']),
-            "market_regime": getattr(self, 'market_regime', 'unknown')
+            "market_regime": getattr(self, 'market_regime', 'unknown'),
+            "regime": getattr(self, 'market_regime', 'unknown') # Add alias for dashboard
         }
         
         retries = 5

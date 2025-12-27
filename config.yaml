@@ -24,4 +24,5 @@ strategy:
     oversold: 30
     period: 14
   spread_pct: 0.0025
+  dca_min_distance_pct: 0.002
   trend_strategy: bollinger

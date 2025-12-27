@@ -433,7 +433,12 @@ class MarketMaker:
             
             # Neutral: Strict "Hold" (loss_tolerance ~ 0)
             
-            if current_pos_qty > 0: # Long
+            # [Inventory Relief] If >80% full, allow 0.2% loss to unclog
+            max_pos = float(Config.get("risk", "max_position_usd", 1000.0))
+            current_value = abs(current_pos_qty * mid_price)
+            if current_value > (max_pos * 0.8):
+                 loss_tolerance = max(loss_tolerance, 0.002) # 0.2% relief
+                 self.logger.info(f"Inventory Heavy ({current_value:.0f}/${max_pos:.0f}). Relaxing tolerance to 0.2%")
                  # DCA: Buy if price < Entry
                  target_bid = min(target_bid, entry_price * 0.9995)
                  # Anchor: Limit Sell Price

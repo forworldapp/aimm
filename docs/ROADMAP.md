@@ -18,19 +18,13 @@
     - [x] Selectable Strategy Mode (Combo, ADX, MA, etc).
     - [x] Real-time Regime Status Display.
 
-## Phase 3: Risk & Advanced Features (v1.4+)
-- [ ] **Dynamic Parameters**
-    - [ ] Auto-adjust Spread based on ATR/Volatility.
-    - [ ] [TODO] restore ADX period to 14.mbol architecture)
-- [ ] 백테스트 프레임워크 (Backtesting engine)
-- [ ] Live 모드 테스트 (Small capital test)
-
-## Phase 4: 고급 기능 (Future)
-- [ ] 머신러닝 기반 스프레드 최적화 (ML Spread Optimization)
-- [ ] 실시간 펀딩비 연동 (Funding Arbitrage)
-- [ ] Cross-Exchange Arbitrage
-
----
+## Phase 3: Risk & Advanced Features (v1.4 - v1.5)
+- [x] **v1.4.6**: DCA Throttle (Prevent rapid-fire buying).
+- [x] **v1.4.5**: Inventory Relief (Unclog stuck positions).
+- [x] **v1.4.4**: RSI Safety Filter (Safety First).
+- [ ] **v1.5.0 (Next Major)**:
+    - [ ] **MTF (Multi-Timeframe) Logic**: Check Daily/4H candles for macro trend.
+    - [ ] **Advanced Risk Manager**: Auto-reduce position size during high volatility.
 
 ## 📋 우선순위 액션 아이템
 | 순위 | 작업 | 진행상태 |
@@ -40,4 +34,4 @@
 | 3 | 스마트 Cancel & Replace | ✅ Done |
 | 4 | Grid 레이어 주문 | ✅ Done |
 | 5 | 동적 트렌드 Skew | ✅ Done |
-| 6 | 동적 스프레드 로직 | Pending |
+| 6 | DCA Throttle (물타기 제한) | ✅ Done |

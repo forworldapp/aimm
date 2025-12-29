@@ -397,11 +397,15 @@ class MarketMaker:
         # --- Circuit Breaker Check ---
         is_triggered, cb_status = self.circuit_breaker.check_volatility(self.candles)
         if is_triggered:
-            self.logger.warning(f"Circuit Breaker Active: {cb_status}. Skipping Cycle.")
-            # Cancel all orders safety (if just enabled)
-            # Note: If triggered, we should ensure no active orders
-            if self.inventory == 0: # Ideally cancel regardless
-                 await self.exchange.cancel_all_orders(self.symbol)
+            self.logger.warning(f"Circuit Breaker Active: {cb_status}. Should Skip Cycle.")
+            
+            # Safety: Cancel ALL open orders to stop trading
+            # Do NOT close position (Hold through the storm)
+            try:
+                await self.exchange.cancel_all_orders(self.symbol)
+            except Exception as e:
+                self.logger.error(f"Failed to cancel orders during CB: {e}")
+                
             return
             
         current_pos_qty = position.get('amount', 0.0)

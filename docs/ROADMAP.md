@@ -22,9 +22,8 @@
 - [x] **v1.4.6**: DCA Throttle (Prevent rapid-fire buying).
 - [x] **v1.4.5**: Inventory Relief (Unclog stuck positions).
 - [x] **v1.4.4**: RSI Safety Filter (Safety First).
-- [ ] **v1.5.0 (Next Major)**:
-    - [ ] **MTF (Multi-Timeframe) Logic**: Check Daily/4H candles for macro trend.
-    - [ ] **Advanced Risk Manager**: Auto-reduce position size during high volatility.
+- [x] **v1.5.0**: Circuit Breaker (ATR 4-Sigma Protection).
+- [x] **v1.4.6**: DCA Throttle (Prevent rapid-fire buying).
 
 ## 📋 우선순위 액션 아이템
 | 순위 | 작업 | 진행상태 |

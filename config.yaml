@@ -4,8 +4,13 @@ exchange:
   symbol: BTC_USDT_Perp
 risk:
   inventory_skew_factor: 0.005
-  max_drawdown_pct: 0.15
+  max_drawdown_pct: 0.15 # Stop bot if equity drops > 15%
   max_position_usd: 1000.0
+  circuit_breaker:
+    enabled: true
+    window_minutes: 60
+    sigma_multiplier: 4.0
+    cooldown_minutes: 15
 strategy:
   bollinger:
     period: 20

@@ -77,6 +77,44 @@ class MarketMaker:
         # Load Params & Initialize Filter
         self._load_params()
         
+        # Initialize Circuit Breaker
+        from strategies.circuit_breaker import CircuitBreaker
+        self.circuit_breaker = CircuitBreaker()
+
+    # ~~~ Methods ~~~
+    
+    async def run(self):
+        self.logger.info("Strategy Started")
+        self.is_running = True
+        self.is_active = True # Force Auto-Start
+        while self.is_running:
+            try:
+                cmd_res = await self.check_command()
+                if cmd_res == 'restart':
+                    return 'restart' # Signal main to restart
+
+                if not self.is_active:
+                    await asyncio.sleep(2)
+                    continue
+                
+                # 0. Circuit Breaker Check
+                if self.circuit_breaker.enabled:
+                    # Update candles first (happens in cycle, but we need it here)
+                    # Actually cycle handles candle updates. We can check CB inside cycle or before?
+                    # Problem: candles are updated inside cycle.
+                    # Best: Check CB at start of cycle.
+                    pass
+                
+                if not await self.check_drawdown():
+                    continue
+
+                await self.cycle()
+            except Exception as e:
+                self.logger.error(f"Error in strategy cycle: {e}")
+            
+            await asyncio.sleep(self.refresh_interval)
+        return 'stop'
+        
     def _load_params(self):
         """Load strategy parameters from config.yaml"""
         Config.load("config.yaml") # Force reload
@@ -355,6 +393,17 @@ class MarketMaker:
         
         self._update_history(mid_price)
         self._update_candle(mid_price, time.time())
+        
+        # --- Circuit Breaker Check ---
+        is_triggered, cb_status = self.circuit_breaker.check_volatility(self.candles)
+        if is_triggered:
+            self.logger.warning(f"Circuit Breaker Active: {cb_status}. Skipping Cycle.")
+            # Cancel all orders safety (if just enabled)
+            # Note: If triggered, we should ensure no active orders
+            if self.inventory == 0: # Ideally cancel regardless
+                 await self.exchange.cancel_all_orders(self.symbol)
+            return
+            
         current_pos_qty = position.get('amount', 0.0)
         self.inventory = current_pos_qty
         

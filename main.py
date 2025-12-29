@@ -6,20 +6,29 @@ load_dotenv()
 from core.config import Config
 from strategies.market_maker import MarketMaker
 
-# Setup Logging
+# --- Logging Setup ---
 import os
+import logging
 from logging.handlers import RotatingFileHandler
 
-os.makedirs("logs", exist_ok=True)
+def setup_logging():
+    log_dir = "logs"
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        RotatingFileHandler(os.path.join("logs", "bot.log"), maxBytes=5*1024*1024, backupCount=3)
-    ]
-)
+    log_file = os.path.join(log_dir, "bot.log")
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=5),
+            logging.StreamHandler()
+        ]
+    )
+    logging.info("Logging initialized (System Time)")
+
+setup_logging()
 logger = logging.getLogger("Main")
 
 # Suppress noisy logs

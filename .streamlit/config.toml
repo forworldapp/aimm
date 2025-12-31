@@ -1,0 +1,11 @@
+[server]
+port = 8503
+headless = true
+enableCORS = false
+enableXsrfProtection = false
+
+[global]
+developmentMode = false
+
+[browser]
+gatherUsageStats = false

@@ -538,8 +538,27 @@ class MarketMaker:
         buy_orders = []
         sell_orders = []
         
-        # Grid Spacing: 0.12% (Adjusted per user request: ~$100 @ 87k)
-        layer_spacing = max(final_spread, 0.0012) 
+        # ATR-Based Dynamic Grid Spacing (v1.5.2)
+        if len(self.candles) >= 14:
+            high = self.candles['high']
+            low = self.candles['low']
+            close = self.candles['close']
+            tr1 = high - low
+            tr2 = (high - close.shift(1)).abs()
+            tr3 = (low - close.shift(1)).abs()
+            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            atr = tr.rolling(14).mean().iloc[-1]
+            
+            # ATR as percentage of price
+            atr_pct = atr / mid_price if mid_price > 0 else 0.0012
+            
+            # Clamp to reasonable range: 0.05% ~ 0.50%
+            layer_spacing = max(0.0005, min(0.005, atr_pct * 1.2))  # 1.2x multiplier for buffer
+        else:
+            layer_spacing = 0.0012  # Fallback: 0.12%
+        
+        # Log spacing for debugging
+        # self.logger.debug(f"Grid Spacing: {layer_spacing*100:.3f}% (~${mid_price * layer_spacing:.0f})") 
 
         for i in range(self.grid_layers):
             # Linearly spaced grid

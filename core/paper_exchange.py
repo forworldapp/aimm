@@ -44,6 +44,10 @@ class PaperGrvtExchange(GrvtExchange):
         self.paper_order_id_counter = 0
         self.last_mid_price = 0.0
         
+        # Grid Profit Tracking (v1.6.0)
+        self.last_increase_price = 0.0  # Last price at which we increased position
+        self.cumulative_grid_profit = 0.0  # Total Grid Profit earned
+        
         self.symbol = Config.get("exchange", "symbol", "BTC_USDT_Perp")
         self.monitor_task = None
         self.status_file = os.path.join("data", f"paper_status_{self.symbol}.json")
@@ -60,7 +64,7 @@ class PaperGrvtExchange(GrvtExchange):
         if not os.path.exists(self.trade_file):
             with open(self.trade_file, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(["timestamp", "symbol", "side", "price", "amount", "cost", "rebate", "realized_pnl", "note"])
+                writer.writerow(["timestamp", "symbol", "side", "price", "amount", "cost", "rebate", "realized_pnl", "grid_profit", "note"])
 
         # Persistence: Try to load previous state from JSON to survive restarts
         # This prevents the bot from losing track of positions and equity.
@@ -246,11 +250,15 @@ class PaperGrvtExchange(GrvtExchange):
         # Rebates are added directly to USDT balance.
         self.paper_balance['USDT'] += rebate
 
+        # --- Grid Profit Tracking (v1.6.0) ---
+        grid_profit = 0.0
+
         # --- Update Position & PnL ---
         
         if old_pos == 0:
             # Simple Open
             new_entry = price
+            self.last_increase_price = price  # Track for Grid Profit
         
         elif is_opening and not is_closing:
             # Pure Increase (Weighted Average Entry)
@@ -259,6 +267,7 @@ class PaperGrvtExchange(GrvtExchange):
             new_val = qty * price
             total_qty = abs(new_pos)
             new_entry = (old_val + new_val) / total_qty
+            self.last_increase_price = price  # Update last increase price
             
         elif is_closing:
             # Reducing Position -> Realize PnL
@@ -270,11 +279,21 @@ class PaperGrvtExchange(GrvtExchange):
             
             if old_pos > 0: # Closing Long
                 pnl = (price - old_entry) * close_qty
+                # Grid Profit: Difference from last increase price
+                if self.last_increase_price > 0:
+                    grid_profit = (price - self.last_increase_price) * close_qty
             else: # Closing Short
                 pnl = (old_entry - price) * close_qty
+                # Grid Profit: Difference from last increase price
+                if self.last_increase_price > 0:
+                    grid_profit = (self.last_increase_price - price) * close_qty
                 
             realized_pnl = pnl
             self.paper_balance['USDT'] += realized_pnl
+            
+            # Accumulate Grid Profit (only positive values)
+            if grid_profit > 0:
+                self.cumulative_grid_profit += grid_profit
             
             # Entry Price does NOT change when reducing position
             new_entry = old_entry
@@ -284,6 +303,7 @@ class PaperGrvtExchange(GrvtExchange):
                 # We crossed 0. The remainder is a new open.
                 remainder = abs(signed_qty) - abs(old_pos)
                 new_entry = price # New entry for the flipped portion
+                self.last_increase_price = price  # New increase price after flip
         
         # Update State
         self.paper_position['amount'] = round(new_pos, 8)
@@ -292,6 +312,7 @@ class PaperGrvtExchange(GrvtExchange):
         # Reset Unrealized if closed
         if new_pos == 0:
             self.paper_position['unrealizedPnL'] = 0.0
+            self.last_increase_price = 0.0  # Reset on full close
 
         # Determine Action Label
         action_label = "Trade"
@@ -303,7 +324,7 @@ class PaperGrvtExchange(GrvtExchange):
              action_label = f"Reduce {'Long' if old_pos > 0 else 'Short'}"
 
         order['status'] = 'filled'
-        self.logger.info(f"PAPER TRADE: {action_label} | {qty} @ {price} | PnL: {realized_pnl:.2f}")
+        self.logger.info(f"PAPER TRADE: {action_label} | {qty} @ {price} | PnL: {realized_pnl:.2f} | Grid: {grid_profit:.2f}")
         
         # Save Trade History
         try:
@@ -318,6 +339,7 @@ class PaperGrvtExchange(GrvtExchange):
                     cost,
                     rebate,
                     realized_pnl,
+                    grid_profit,  # New column
                     action_label
                 ])
         except Exception as e:
@@ -344,7 +366,10 @@ class PaperGrvtExchange(GrvtExchange):
             ],
             "open_orders": len([o for o in self.paper_orders.values() if o['status'] == 'open']),
             "market_regime": getattr(self, 'market_regime', 'unknown'),
-            "regime": getattr(self, 'market_regime', 'unknown') # Add alias for dashboard
+            "regime": getattr(self, 'market_regime', 'unknown'),
+            # Grid Profit v1.6.0
+            "cumulative_grid_profit": self.cumulative_grid_profit,
+            "last_increase_price": self.last_increase_price
         }
         
         retries = 5

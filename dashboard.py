@@ -220,8 +220,8 @@ if not status and st.session_state.last_valid_status:
 
 # --- Metrics Section ---
 st.subheader("📊 Live Performance")
-# Adjust column ratios to give more space to Regime (col5)
-col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 0.7, 1.8])
+# Adjust column ratios
+col1, col2, col3, col4, col5, col6 = st.columns([1, 1, 1, 0.8, 0.8, 0.7])
 
 balance = status.get('balance', {})
 pos = status.get('position', {})
@@ -233,6 +233,10 @@ entry_price = pos.get('entryPrice', 0.0)
 unrealized_pnl = pos.get('unrealizedPnL', 0.0)
 total_equity = usdt_bal + unrealized_pnl
 
+# Grid Profit v1.6.0
+cumulative_grid_profit = status.get('cumulative_grid_profit', 0.0)
+last_increase_price = status.get('last_increase_price', 0.0)
+
 with col1:
     st.metric("💰 Total Equity", f"${total_equity:,.2f}", delta=f"{unrealized_pnl:+.2f} (Unrealized)")
 
@@ -243,26 +247,26 @@ with col3:
     st.metric("📦 Position (BTC)", f"{quantity:.4f}", delta=f"Entry: ${entry_price:,.0f}")
 
 with col4:
+    # Grid Profit Display
+    st.metric("🎯 Grid Profit", f"${cumulative_grid_profit:,.2f}", delta=f"Last Inc: ${last_increase_price:,.0f}" if last_increase_price > 0 else None)
+
+with col5:
     open_orders = status.get('open_orders', 0)
     st.metric("Open Orders", open_orders)
-    
+
+with col6:
     # Order Details Expander
     orders_list = status.get('open_orders_list', [])
     if orders_list:
-        with st.expander("Order Details", expanded=True):
+        with st.expander("📋", expanded=False):
             # Sort: Buy (Desc), Sell (Asc)
             bids = sorted([o for o in orders_list if o['side'] == 'buy'], key=lambda x: x['price'], reverse=True)
             asks = sorted([o for o in orders_list if o['side'] == 'sell'], key=lambda x: x['price'])
             
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**🟢 Bids**")
-                for o in bids:
-                    st.text(f"${o['price']:,.1f} ({o['amount']})")
-            with c2:
-                st.markdown("**🔴 Asks**")
-                for o in asks:
-                    st.text(f"${o['price']:,.1f} ({o['amount']})")
+            for o in bids:
+                st.text(f"🟢 ${o['price']:,.1f}")
+            for o in asks:
+                st.text(f"🔴 ${o['price']:,.1f}")
 
 # Move Regime to full width box to prevent truncation
 regime = status.get('market_regime', 'N/A').upper()
@@ -272,8 +276,6 @@ elif "SELL" in regime:
     st.error(f"🚦 Regime: {regime}")
 else:
     st.info(f"🚦 Regime: {regime}")
-# with col5:
-#    st.metric("🚦 Regime", regime, help="Adaptive Mode State")
 
 # --- Charts Section ---
 st.divider()
@@ -371,20 +373,27 @@ if os.path.exists(trade_file):
             df_trade['datetime'] = pd.to_datetime(df_trade['timestamp'], unit='s', utc=True)
             df_trade['datetime'] = df_trade['datetime'].dt.tz_convert('Asia/Seoul')
             
-            # Match new CSV Header: timestamp, symbol, side, price, amount, cost, rebate, realized_pnl, note
-            df_display = df_trade[['datetime', 'note', 'symbol', 'side', 'price', 'amount', 'cost', 'rebate', 'realized_pnl']].sort_values(by='datetime', ascending=False)
+            # Match new CSV Header: timestamp, symbol, side, price, amount, cost, rebate, realized_pnl, grid_profit, note
+            # Handle both old and new format
+            display_cols = ['datetime', 'note', 'symbol', 'side', 'price', 'amount', 'realized_pnl']
+            if 'grid_profit' in df_trade.columns:
+                display_cols.insert(-1, 'grid_profit')  # Add before realized_pnl
+            
+            df_display = df_trade[[c for c in display_cols if c in df_trade.columns]].sort_values(by='datetime', ascending=False)
+            
+            column_config = {
+                "datetime": st.column_config.DatetimeColumn("Time (KST)", format="MM-DD HH:mm:ss"),
+                "note": "Action",
+                "price": st.column_config.NumberColumn("Price", format="$%.2f"),
+                "realized_pnl": st.column_config.NumberColumn("Realized PnL", format="$%.4f"),
+            }
+            if 'grid_profit' in df_trade.columns:
+                column_config["grid_profit"] = st.column_config.NumberColumn("🎯 Grid Profit", format="$%.4f")
             
             st.dataframe(
                 df_display, 
                 use_container_width=True,
-                column_config={
-                    "datetime": st.column_config.DatetimeColumn("Time (KST)", format="MM-DD HH:mm:ss"),
-                    "note": "Action",
-                    "price": st.column_config.NumberColumn("Price", format="$%.2f"),
-                    "cost": st.column_config.NumberColumn("Cost", format="$%.2f"),
-                    "rebate": st.column_config.NumberColumn("Fee/Rebate", format="$%.4f"),
-                    "realized_pnl": st.column_config.NumberColumn("Realized PnL", format="$%.4f"),      
-                }
+                column_config=column_config
             )
             
             csv_data = df_trade.to_csv(index=False).encode('utf-8')

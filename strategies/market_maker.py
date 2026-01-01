@@ -73,6 +73,11 @@ class MarketMaker:
         # Risk State
         self.initial_equity = None
         self.inventory = 0.0 # Position tracking
+        
+        # Grid Profit Order Management (v1.6.1)
+        self.grid_orders_pending = False  # True if we have Grid orders waiting for fill
+        self.last_position_qty = 0.0  # Track position changes to detect fills
+        self.preserve_breakeven_order = False  # Flag to keep break-even order after fill
 
         # Load Params & Initialize Filter
         self._load_params()
@@ -580,13 +585,72 @@ class MarketMaker:
             if allow_sell:
                 sell_orders.append((ask_p, qty))
             
-        # --- 6. Place Orders ---
+        # --- 6. Grid Profit Order Management (v1.6.1) ---
+        unrealized_pnl = position.get('unrealizedPnL', 0.0)
+        entry_price = position.get('entryPrice', 0.0)
+        
+        # Detect if a Reduce fill happened (position moved toward 0)
+        position_reduced = False
+        if self.last_position_qty != 0:
+            if current_pos_qty == 0:
+                position_reduced = True
+            elif abs(current_pos_qty) < abs(self.last_position_qty):
+                position_reduced = True
+        
+        # Calculate break-even price (where position becomes profitable)
+        breakeven_price = entry_price  # Simplified: at entry price, PnL = 0
+        
+        # Determine if signal is in Reduce direction
+        has_reduce_signal = False
+        if current_pos_qty > 0 and 'sell_signal' in effective_regime:  # Long -> Sell signal
+            has_reduce_signal = True
+        elif current_pos_qty < 0 and 'buy_signal' in effective_regime:  # Short -> Buy signal
+            has_reduce_signal = True
+        
+        # --- Order Management Logic ---
+        if position_reduced and unrealized_pnl < 0:
+            # After Reduce fill in LOSS state: Keep only break-even order
+            self.logger.info(f"Grid Fill Detected (Loss State). Keeping break-even order only.")
+            self.preserve_breakeven_order = True
+            
+        if unrealized_pnl < 0 and current_pos_qty != 0:
+            # In LOSS state
+            if self.preserve_breakeven_order and not has_reduce_signal:
+                # Keep only break-even order, skip regenerating full grid
+                await self.exchange.cancel_all_orders(self.symbol)
+                
+                # Place single break-even order
+                if current_pos_qty > 0:  # Long position
+                    be_price = round_tick_size(breakeven_price * 1.001, self.tick_size)  # Slightly above entry
+                    await self.exchange.place_limit_order(self.symbol, 'sell', be_price, abs(current_pos_qty))
+                    self.logger.info(f"Break-even Order: Sell @ ${be_price:.1f}")
+                else:  # Short position
+                    be_price = round_tick_size(breakeven_price * 0.999, self.tick_size)  # Slightly below entry
+                    await self.exchange.place_limit_order(self.symbol, 'buy', be_price, abs(current_pos_qty))
+                    self.logger.info(f"Break-even Order: Buy @ ${be_price:.1f}")
+                
+                self.last_position_qty = current_pos_qty
+                return  # Skip normal grid placement
+            
+            elif has_reduce_signal:
+                # Signal appeared! Regenerate Grid orders
+                self.preserve_breakeven_order = False
+                self.logger.info(f"Reduce Signal Detected. Regenerating Grid orders.")
+                # Fall through to normal order placement
+        else:
+            # In PROFIT state or flat: Normal grid trading
+            self.preserve_breakeven_order = False
+        
+        # --- Normal Order Placement ---
         await self.exchange.cancel_all_orders(self.symbol)
         
         for p, q in buy_orders:
              await self.exchange.place_limit_order(self.symbol, 'buy', p, q)
         for p, q in sell_orders:
              await self.exchange.place_limit_order(self.symbol, 'sell', p, q)
+        
+        # Track position for fill detection
+        self.last_position_qty = current_pos_qty
 
     async def run(self):
         self.logger.info("Strategy Started")

@@ -291,9 +291,8 @@ class PaperGrvtExchange(GrvtExchange):
             realized_pnl = pnl
             self.paper_balance['USDT'] += realized_pnl
             
-            # Accumulate Grid Profit (only positive values)
-            if grid_profit > 0:
-                self.cumulative_grid_profit += grid_profit
+            # Accumulate Grid Profit/Loss (Net, includes both + and -)
+            self.cumulative_grid_profit += grid_profit
             
             # Entry Price does NOT change when reducing position
             new_entry = old_entry

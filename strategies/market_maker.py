@@ -144,6 +144,13 @@ class MarketMaker:
         
         self.risk_manager = RiskManager()
         self.risk_manager.max_drawdown = float(Config.get("risk", "max_drawdown_pct", 0.10))
+        
+        # VaR-based Inventory Limit (v1.7.0)
+        var_conf = Config.get("risk", "var_limit", {})
+        self.var_enabled = var_conf.get("enabled", True)
+        self.var_max_loss_pct = float(var_conf.get("max_loss_pct", 0.05))
+        self.var_atr_multiplier = float(var_conf.get("atr_multiplier", 2.0))
+        self.logger.info(f"VaR Limit: {'ON' if self.var_enabled else 'OFF'} (Max {self.var_max_loss_pct*100:.0f}% @ {self.var_atr_multiplier}x ATR)")
 
     def _initialize_filter(self, name):
         name = str(name).lower()
@@ -585,69 +592,90 @@ class MarketMaker:
             if allow_sell:
                 sell_orders.append((ask_p, qty))
             
-        # --- 6. Grid Profit Order Management (v1.6.1) ---
+        # --- 6. VaR-based Inventory Management (v1.7.0) ---
         unrealized_pnl = position.get('unrealizedPnL', 0.0)
         entry_price = position.get('entryPrice', 0.0)
         
-        # Detect if a Reduce fill happened (position moved toward 0)
-        position_reduced = False
-        if self.last_position_qty != 0:
-            if current_pos_qty == 0:
-                position_reduced = True
-            elif abs(current_pos_qty) < abs(self.last_position_qty):
-                position_reduced = True
+        # Calculate ATR for VaR
+        current_atr = 0.0
+        if len(self.candles) >= 14:
+            high = self.candles['high']
+            low = self.candles['low']
+            close = self.candles['close']
+            tr1 = high - low
+            tr2 = (high - close.shift(1)).abs()
+            tr3 = (low - close.shift(1)).abs()
+            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            current_atr = tr.rolling(14).mean().iloc[-1]
         
-        # Calculate break-even price (where position becomes profitable)
-        breakeven_price = entry_price  # Simplified: at entry price, PnL = 0
+        # VaR Calculation
+        allow_increase = True  # Default: allow both directions
+        
+        if self.var_enabled and current_atr > 0 and self.initial_equity:
+            potential_loss = abs(current_pos_qty) * current_atr * self.var_atr_multiplier
+            max_acceptable_loss = self.initial_equity * self.var_max_loss_pct
+            
+            if potential_loss > max_acceptable_loss:
+                # Over VaR limit -> Defense mode (Reduce only)
+                allow_increase = False
+                self.logger.info(f"VaR Limit Hit: ${potential_loss:.0f} > ${max_acceptable_loss:.0f}. Reduce-only mode.")
         
         # Determine if signal is in Reduce direction
         has_reduce_signal = False
-        if current_pos_qty > 0 and 'sell_signal' in effective_regime:  # Long -> Sell signal
-            has_reduce_signal = True
-        elif current_pos_qty < 0 and 'buy_signal' in effective_regime:  # Short -> Buy signal
-            has_reduce_signal = True
+        is_increase_direction = False
         
-        # --- Order Management Logic ---
-        if position_reduced and unrealized_pnl < 0:
-            # After Reduce fill in LOSS state: Keep only break-even order
-            self.logger.info(f"Grid Fill Detected (Loss State). Keeping break-even order only.")
-            self.preserve_breakeven_order = True
+        if current_pos_qty > 0:  # Long position
+            if 'sell_signal' in effective_regime:
+                has_reduce_signal = True
+            if 'buy_signal' in effective_regime:
+                is_increase_direction = True
+        elif current_pos_qty < 0:  # Short position
+            if 'buy_signal' in effective_regime:
+                has_reduce_signal = True
+            if 'sell_signal' in effective_regime:
+                is_increase_direction = True
+        
+        # Apply VaR constraint to order generation
+        if not allow_increase:
+            # Filter out Increase direction orders
+            if current_pos_qty > 0:  # Long -> Block Buy orders
+                buy_orders = []
+            elif current_pos_qty < 0:  # Short -> Block Sell orders
+                sell_orders = []
+        
+        # --- 7. Smart Order Management (v1.7.1) ---
+        # Only update orders when target prices change significantly
+        PRICE_TOLERANCE = 0.001  # 0.1% tolerance
+        
+        existing_orders = await self.exchange.get_open_orders(self.symbol)
+        existing_buys = {o['id']: o['price'] for o in existing_orders if o['side'] == 'buy'}
+        existing_sells = {o['id']: o['price'] for o in existing_orders if o['side'] == 'sell'}
+        
+        new_buy_prices = set(p for p, q in buy_orders)
+        new_sell_prices = set(p for p, q in sell_orders)
+        
+        # Check if orders need update
+        def prices_match(existing_prices, new_prices, tolerance):
+            if len(existing_prices) != len(new_prices):
+                return False
+            existing_set = set(existing_prices.values())
+            for new_p in new_prices:
+                if not any(abs(new_p - old_p) / old_p < tolerance for old_p in existing_set if old_p > 0):
+                    return False
+            return True
+        
+        buys_need_update = not prices_match(existing_buys, new_buy_prices, PRICE_TOLERANCE)
+        sells_need_update = not prices_match(existing_sells, new_sell_prices, PRICE_TOLERANCE)
+        
+        if buys_need_update or sells_need_update:
+            # Cancel and replace only if needed
+            await self.exchange.cancel_all_orders(self.symbol)
             
-        if unrealized_pnl < 0 and current_pos_qty != 0:
-            # In LOSS state
-            if self.preserve_breakeven_order and not has_reduce_signal:
-                # Keep only break-even order, skip regenerating full grid
-                await self.exchange.cancel_all_orders(self.symbol)
-                
-                # Place single break-even order
-                if current_pos_qty > 0:  # Long position
-                    be_price = round_tick_size(breakeven_price * 1.001, self.tick_size)  # Slightly above entry
-                    await self.exchange.place_limit_order(self.symbol, 'sell', be_price, abs(current_pos_qty))
-                    self.logger.info(f"Break-even Order: Sell @ ${be_price:.1f}")
-                else:  # Short position
-                    be_price = round_tick_size(breakeven_price * 0.999, self.tick_size)  # Slightly below entry
-                    await self.exchange.place_limit_order(self.symbol, 'buy', be_price, abs(current_pos_qty))
-                    self.logger.info(f"Break-even Order: Buy @ ${be_price:.1f}")
-                
-                self.last_position_qty = current_pos_qty
-                return  # Skip normal grid placement
-            
-            elif has_reduce_signal:
-                # Signal appeared! Regenerate Grid orders
-                self.preserve_breakeven_order = False
-                self.logger.info(f"Reduce Signal Detected. Regenerating Grid orders.")
-                # Fall through to normal order placement
-        else:
-            # In PROFIT state or flat: Normal grid trading
-            self.preserve_breakeven_order = False
-        
-        # --- Normal Order Placement ---
-        await self.exchange.cancel_all_orders(self.symbol)
-        
-        for p, q in buy_orders:
-             await self.exchange.place_limit_order(self.symbol, 'buy', p, q)
-        for p, q in sell_orders:
-             await self.exchange.place_limit_order(self.symbol, 'sell', p, q)
+            for p, q in buy_orders:
+                await self.exchange.place_limit_order(self.symbol, 'buy', p, q)
+            for p, q in sell_orders:
+                await self.exchange.place_limit_order(self.symbol, 'sell', p, q)
+        # else: Keep existing orders (no action needed)
         
         # Track position for fill detection
         self.last_position_qty = current_pos_qty

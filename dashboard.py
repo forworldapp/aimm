@@ -221,7 +221,7 @@ if not status and st.session_state.last_valid_status:
 # --- Metrics Section ---
 st.subheader("📊 Live Performance")
 # Adjust column ratios
-col1, col2, col3, col4, col5, col6 = st.columns([1, 1, 1, 0.8, 0.8, 0.7])
+col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 0.8, 0.7])
 
 balance = status.get('balance', {})
 pos = status.get('position', {})
@@ -254,19 +254,25 @@ with col5:
     open_orders = status.get('open_orders', 0)
     st.metric("Open Orders", open_orders)
 
-with col6:
-    # Order Details Expander
-    orders_list = status.get('open_orders_list', [])
+# Order Details Section (Always Visible)
+orders_list = status.get('open_orders_list', [])
+with st.expander("📋 Grid Order Details", expanded=True):
     if orders_list:
-        with st.expander("📋", expanded=False):
-            # Sort: Buy (Desc), Sell (Asc)
-            bids = sorted([o for o in orders_list if o['side'] == 'buy'], key=lambda x: x['price'], reverse=True)
-            asks = sorted([o for o in orders_list if o['side'] == 'sell'], key=lambda x: x['price'])
-            
+        # Sort: Buy (Desc), Sell (Asc)
+        bids = sorted([o for o in orders_list if o['side'] == 'buy'], key=lambda x: x['price'], reverse=True)
+        asks = sorted([o for o in orders_list if o['side'] == 'sell'], key=lambda x: x['price'])
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**🟢 Bids (Buy)**")
             for o in bids:
-                st.text(f"🟢 ${o['price']:,.1f}")
+                st.text(f"${o['price']:,.1f} | {o['amount']:.4f} BTC")
+        with c2:
+            st.markdown("**🔴 Asks (Sell)**")
             for o in asks:
-                st.text(f"🔴 ${o['price']:,.1f}")
+                st.text(f"${o['price']:,.1f} | {o['amount']:.4f} BTC")
+    else:
+        st.info("📭 No active grid orders")
 
 # Move Regime to full width box to prevent truncation
 regime = status.get('market_regime', 'N/A').upper()
@@ -367,17 +373,18 @@ st.subheader("📜 Trade History")
 
 if os.path.exists(trade_file):
     try:
-        df_trade = pd.read_csv(trade_file)
+        # Handle mixed column formats (old=9, new=10 columns)
+        df_trade = pd.read_csv(trade_file, on_bad_lines='skip')
         if not df_trade.empty:
             # Convert to KST
             df_trade['datetime'] = pd.to_datetime(df_trade['timestamp'], unit='s', utc=True)
             df_trade['datetime'] = df_trade['datetime'].dt.tz_convert('Asia/Seoul')
             
             # Match new CSV Header: timestamp, symbol, side, price, amount, cost, rebate, realized_pnl, grid_profit, note
-            # Handle both old and new format
+            # Handle both old and new format - Grid Profit at the end after Realized PnL
             display_cols = ['datetime', 'note', 'symbol', 'side', 'price', 'amount', 'realized_pnl']
             if 'grid_profit' in df_trade.columns:
-                display_cols.insert(-1, 'grid_profit')  # Add before realized_pnl
+                display_cols.append('grid_profit')  # Add AFTER realized_pnl (at end)
             
             df_display = df_trade[[c for c in display_cols if c in df_trade.columns]].sort_values(by='datetime', ascending=False)
             
@@ -388,7 +395,7 @@ if os.path.exists(trade_file):
                 "realized_pnl": st.column_config.NumberColumn("Realized PnL", format="$%.4f"),
             }
             if 'grid_profit' in df_trade.columns:
-                column_config["grid_profit"] = st.column_config.NumberColumn("🎯 Grid Profit", format="$%.4f")
+                column_config["grid_profit"] = st.column_config.NumberColumn("🎯 Grid P/L", format="$%.4f")
             
             st.dataframe(
                 df_display, 

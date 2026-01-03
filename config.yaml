@@ -9,8 +9,13 @@ risk:
   circuit_breaker:
     enabled: true
     window_minutes: 60
-    sigma_multiplier: 4.0
-    cooldown_minutes: 15
+    sigma_multiplier: 6.0
+    cooldown_minutes: 10
+  # VaR-based Inventory Management (v1.7.0)
+  var_limit:
+    enabled: true
+    max_loss_pct: 0.05      # Max 5% of equity at risk
+    atr_multiplier: 2.0     # 2-ATR (~95% confidence)
 strategy:
   bollinger:
     period: 20

@@ -35,4 +35,8 @@ strategy:
     period: 14
   spread_pct: 0.0025
   dca_min_distance_pct: 0.002
+  # Softer trading when in loss (v1.7.2)
+  loss_state:
+    spread_multiplier: 0.5    # Tighten spread by 50% when in loss
+    skew_dampener: 0.3        # Reduce skew to 30% when in loss
   trend_strategy: bollinger

@@ -479,6 +479,18 @@ class MarketMaker:
         else:
             final_spread = self._calculate_dynamic_spread()
         
+        # --- Loss State Adjustment (v1.7.2) ---
+        # When position is at a loss, tighten spread and reduce skew for better fills
+        unrealized_pnl_check = position.get('unrealizedPnL', 0.0)
+        if current_pos_qty != 0 and unrealized_pnl_check < 0:
+            loss_conf = Config.get("strategy", "loss_state", {})
+            spread_mult = float(loss_conf.get("spread_multiplier", 0.5))
+            skew_damp = float(loss_conf.get("skew_dampener", 0.3))
+            
+            final_spread = final_spread * spread_mult  # Tighten spread
+            total_skew = total_skew * skew_damp  # Reduce skew
+            self.logger.debug(f"Loss State: Spread x{spread_mult}, Skew x{skew_damp}")
+        
         skewed_mid = mid_price * (1 + total_skew)
         target_bid = round_tick_size(skewed_mid * (1 - final_spread / 2), self.tick_size)
         target_ask = round_tick_size(skewed_mid * (1 + final_spread / 2), self.tick_size)

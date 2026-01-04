@@ -516,30 +516,9 @@ class MarketMaker:
             if current_value > (max_pos * 0.8):
                  loss_tolerance = max(loss_tolerance, 0.002) # 0.2% relief
                  self.logger.info(f"Inventory Heavy ({current_value:.0f}/${max_pos:.0f}). Relaxing tolerance to 0.2%")
-                 
-            # [DCA Throttle] Minimum Price Distance Check
-            # Prevent buying too close to existing entry (rapid fire fix)
-            min_dist = float(Config.get("strategy", "dca_min_distance_pct", 0.002)) # 0.2%
-            if current_pos_qty > 0 and entry_price > 0:
-                # If we are long, only buy if price < entry * (1 - min_dist)
-                limit_buy_price = entry_price * (1.0 - min_dist)
-                target_bid = min(target_bid, limit_buy_price)
-                
-            elif current_pos_qty < 0 and entry_price > 0:
-                 # If short, only sell if price > entry * (1 + min_dist)
-                 limit_sell_price = entry_price * (1.0 + min_dist)
-                 target_ask = max(target_ask, limit_sell_price)
-                 # DCA: Buy if price < Entry
-                 target_bid = min(target_bid, entry_price * 0.9995)
-                 # Anchor: Limit Sell Price
-                 limit_price = entry_price * (1.0 - loss_tolerance) + (entry_price * 0.0005) # Adjust slightly
-                 target_ask = max(target_ask, entry_price * (1 - loss_tolerance)) 
-                 
-            elif current_pos_qty < 0: # Short
-                 # DCA: Sell if price > Entry
-                 target_ask = max(target_ask, entry_price * 1.0005)
-                 # Anchor: Limit Buy Price
-                 target_bid = min(target_bid, entry_price * (1 + loss_tolerance))
+            
+            # [DCA Throttle REMOVED in v1.7.3]
+            # Now relying on stronger inventory skew instead
 
         # --- 4. Permission Flags ---
         allow_buy = rsi_status != 'overbought'

@@ -3,7 +3,7 @@ exchange:
   mode: paper
   symbol: BTC_USDT_Perp
 risk:
-  inventory_skew_factor: 0.005
+  inventory_skew_factor: 0.05  # v1.7.3: 10x stronger (was 0.005)
   max_drawdown_pct: 0.15 # Stop bot if equity drops > 15%
   max_position_usd: 1000.0
   circuit_breaker:

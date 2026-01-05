@@ -525,17 +525,17 @@ class MarketMaker:
         allow_sell = rsi_status != 'oversold'
         
         if self.filter_strategy and 'BB' in self.filter_strategy.name:
-            # Signal Logic
+            # Signal-Only Mode (v1.8.0): Only trade when signal present
             if 'buy_signal' not in effective_regime:
-                allow_buy = False # Default block unless neutral logic overrides
+                allow_buy = False
             if 'sell_signal' not in effective_regime:
                 allow_sell = False
 
-            # Neutral Logic: Allow Grid Trading (Accumulation)
-            # Re-enabled per user request (Step 3329)
-            if 'neutral' in effective_regime:
-                allow_buy = True
-                allow_sell = True
+            # Neutral: NO TRADING (Skip grid placement)
+            # v1.8.0: Removed neutral trading to avoid sideways losses
+            if 'neutral' in effective_regime or 'waiting' in effective_regime:
+                allow_buy = False
+                allow_sell = False
                 
         # --- 5. Generate Grid Orders ---
         buy_orders = []

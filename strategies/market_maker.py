@@ -531,9 +531,14 @@ class MarketMaker:
             if 'sell_signal' not in effective_regime:
                 allow_sell = False
 
-            # Neutral: NO TRADING (Skip grid placement)
-            # v1.8.0: Removed neutral trading to avoid sideways losses
-            if 'neutral' in effective_regime or 'waiting' in effective_regime:
+            # v1.8.2: Profit-Taking Override - Allow opposite direction for existing positions
+            if current_pos_qty > 0:  # Long position -> Allow Sell for profit
+                allow_sell = True
+            elif current_pos_qty < 0:  # Short position -> Allow Buy for profit
+                allow_buy = True
+
+            # Neutral with no position: NO TRADING
+            if ('neutral' in effective_regime or 'waiting' in effective_regime) and current_pos_qty == 0:
                 allow_buy = False
                 allow_sell = False
                 

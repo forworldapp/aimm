@@ -645,6 +645,12 @@ class MarketMaker:
         new_buy_prices = set(p for p, q in buy_orders)
         new_sell_prices = set(p for p, q in sell_orders)
         
+        # v1.8.1: If no new orders (neutral/waiting), KEEP existing orders
+        if len(buy_orders) == 0 and len(sell_orders) == 0:
+            self.logger.debug("Neutral/Waiting: Preserving existing orders.")
+            self.last_position_qty = current_pos_qty
+            return  # Skip order management, keep existing grid
+        
         # Check if orders need update
         def prices_match(existing_prices, new_prices, tolerance):
             if len(existing_prices) != len(new_prices):

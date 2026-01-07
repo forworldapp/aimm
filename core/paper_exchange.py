@@ -44,9 +44,10 @@ class PaperGrvtExchange(GrvtExchange):
         self.paper_order_id_counter = 0
         self.last_mid_price = 0.0
         
-        # Grid Profit Tracking (v1.9.0)
+        # Grid Profit Tracking (v1.9.2 - FIFO)
         self.cumulative_grid_profit = 0.0
-        self.last_increase_price = 0.0
+        self.increase_price_queue = []  # FIFO queue: [(price, qty), ...]
+        self.last_increase_price = 0.0  # Keep for dashboard display
         
         self.symbol = Config.get("exchange", "symbol", "BTC_USDT_Perp")
         self.monitor_task = None
@@ -280,15 +281,34 @@ class PaperGrvtExchange(GrvtExchange):
             realized_pnl = pnl
             self.paper_balance['USDT'] += realized_pnl
             
-            # Grid Profit Calculation (v1.9.0)
-            # Grid Profit = profit from exiting at better price than last increase
+            # Grid Profit Calculation (v1.9.2 - FIFO)
+            # Match reduce trades with oldest increase trades first
             grid_profit = 0.0
-            if self.last_increase_price > 0:
+            remaining_close_qty = close_qty
+            
+            while remaining_close_qty > 0 and self.increase_price_queue:
+                inc_price, inc_qty = self.increase_price_queue[0]
+                
+                # How much can we match from this increase?
+                match_qty = min(remaining_close_qty, inc_qty)
+                
+                # Calculate Grid Profit for this portion
                 if old_pos > 0:  # Long -> Sell to close
-                    grid_profit = (price - self.last_increase_price) * close_qty
+                    portion_profit = (price - inc_price) * match_qty
                 else:  # Short -> Buy to close
-                    grid_profit = (self.last_increase_price - price) * close_qty
-                self.cumulative_grid_profit += grid_profit
+                    portion_profit = (inc_price - price) * match_qty
+                
+                grid_profit += portion_profit
+                remaining_close_qty -= match_qty
+                
+                # Update or remove the queue entry
+                if match_qty >= inc_qty:
+                    self.increase_price_queue.pop(0)  # Fully matched, remove
+                else:
+                    # Partially matched, reduce quantity
+                    self.increase_price_queue[0] = (inc_price, inc_qty - match_qty)
+            
+            self.cumulative_grid_profit += grid_profit
             
             # Entry Price does NOT change when reducing position
             new_entry = old_entry
@@ -298,10 +318,13 @@ class PaperGrvtExchange(GrvtExchange):
                 # We crossed 0. The remainder is a new open.
                 remainder = abs(signed_qty) - abs(old_pos)
                 new_entry = price # New entry for the flipped portion
+                # Clear queue on position flip (new direction)
+                self.increase_price_queue = []
         
-        # Track last increase price for Grid Profit calculation
+        # Track increase prices for FIFO Grid Profit
         if is_opening:
-            self.last_increase_price = price
+            self.increase_price_queue.append((price, qty))
+            self.last_increase_price = price  # Keep for dashboard
         
         # Update State
         self.paper_position['amount'] = round(new_pos, 8)

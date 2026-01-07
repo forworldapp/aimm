@@ -490,13 +490,40 @@ class MarketMaker:
             if allow_sell:
                 sell_orders.append((ask_p, qty))
             
-        # --- 6. Place Orders ---
-        await self.exchange.cancel_all_orders(self.symbol)
+        # --- 6. Smart Order Management (v1.9.1) ---
+        # Only update orders if prices changed significantly (>0.1% tolerance)
+        PRICE_TOLERANCE = 0.001  # 0.1%
         
-        for p, q in buy_orders:
-             await self.exchange.place_limit_order(self.symbol, 'buy', p, q)
-        for p, q in sell_orders:
-             await self.exchange.place_limit_order(self.symbol, 'sell', p, q)
+        # Get existing orders
+        existing_orders = await self.exchange.get_open_orders(self.symbol)
+        existing_buys = {o['id']: o['price'] for o in existing_orders if o['side'] == 'buy'}
+        existing_sells = {o['id']: o['price'] for o in existing_orders if o['side'] == 'sell'}
+        
+        new_buy_prices = set(p for p, q in buy_orders)
+        new_sell_prices = set(p for p, q in sell_orders)
+        
+        # Check if orders need update
+        def prices_match(existing_prices, new_prices, tolerance):
+            if len(existing_prices) != len(new_prices):
+                return False
+            existing_set = set(existing_prices.values())
+            for new_p in new_prices:
+                if not any(abs(new_p - old_p) / old_p < tolerance for old_p in existing_set if old_p > 0):
+                    return False
+            return True
+        
+        buys_need_update = not prices_match(existing_buys, new_buy_prices, PRICE_TOLERANCE)
+        sells_need_update = not prices_match(existing_sells, new_sell_prices, PRICE_TOLERANCE)
+        
+        if buys_need_update or sells_need_update:
+            # Cancel and replace only if needed
+            await self.exchange.cancel_all_orders(self.symbol)
+            
+            for p, q in buy_orders:
+                await self.exchange.place_limit_order(self.symbol, 'buy', p, q)
+            for p, q in sell_orders:
+                await self.exchange.place_limit_order(self.symbol, 'sell', p, q)
+        # else: Keep existing orders (no action needed)
 
     async def run(self):
         self.logger.info("Strategy Started")

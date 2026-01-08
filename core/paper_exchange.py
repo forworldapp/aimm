@@ -252,6 +252,9 @@ class PaperGrvtExchange(GrvtExchange):
         self.paper_balance['USDT'] += rebate
 
         # --- Update Position & PnL ---
+        # Initialize variables that may not be set in all code paths
+        grid_profit = 0.0
+        realized_pnl = 0.0
         
         if old_pos == 0:
             # Simple Open

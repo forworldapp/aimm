@@ -317,12 +317,17 @@ class PaperGrvtExchange(GrvtExchange):
             if abs(signed_qty) > abs(old_pos):
                 # We crossed 0. The remainder is a new open.
                 remainder = abs(signed_qty) - abs(old_pos)
-                new_entry = price # New entry for the flipped portion
+                # v1.9.3: Entry for flipped portion only (not the full qty)
+                new_entry = price
                 # Clear queue on position flip (new direction)
                 self.increase_price_queue = []
+                # Add the flip remainder to FIFO queue
+                self.increase_price_queue.append((price, remainder))
+                self.last_increase_price = price
         
-        # Track increase prices for FIFO Grid Profit
-        if is_opening:
+        # Track increase prices for FIFO Grid Profit (only for pure increase, not flip)
+        if is_opening and not is_closing:
+            # Pure Increase: Calculate weighted average Entry (already done in Line 260-266)
             self.increase_price_queue.append((price, qty))
             self.last_increase_price = price  # Keep for dashboard
         

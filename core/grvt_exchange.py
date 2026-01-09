@@ -199,6 +199,19 @@ class GrvtExchange(ExchangeInterface):
         import json
         import os
         import time
+        import csv
+        
+        # Calculate cumulative grid profit from trade history
+        trade_file = os.path.join("data", f"trade_history_{symbol.replace('/', '_')}.csv")
+        cumulative_grid_profit = 0.0
+        if os.path.exists(trade_file):
+            try:
+                with open(trade_file, 'r') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        cumulative_grid_profit += float(row.get('grid_profit', 0))
+            except Exception:
+                pass
         
         status_file = os.path.join("data", f"paper_status_{symbol.replace('/', '_')}.json")
         status = {
@@ -217,7 +230,7 @@ class GrvtExchange(ExchangeInterface):
             "open_orders": len(open_orders),
             "market_regime": regime,
             "regime": regime,
-            "cumulative_grid_profit": 0.0,
+            "cumulative_grid_profit": round(cumulative_grid_profit, 4),
             "last_increase_price": 0.0
         }
         
@@ -229,14 +242,132 @@ class GrvtExchange(ExchangeInterface):
             
             # Also save history for charts
             history_file = os.path.join("data", f"pnl_history_{symbol.replace('/', '_')}.csv")
-            import csv
             with open(history_file, 'a', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow([
                     time.time(),
                     round(equity, 2),
-                    0,  # Realized PnL (tracked separately in trade history)
+                    round(cumulative_grid_profit, 2),  # Realized PnL from trades
                     round(mid_price, 2)
                 ])
         except Exception as e:
             self.logger.warning(f"Failed to save live status: {e}")
+
+    def fetch_and_save_trades(self, symbol: str):
+        """Fetch recent trades from GRVT and save to trade history CSV with FIFO grid profit."""
+        import csv
+        import os
+        import time
+        from collections import deque
+        
+        if not self.exchange:
+            return
+            
+        try:
+            # Fetch recent trades
+            response = self.exchange.fetch_my_trades(symbol, limit=50)
+            if not response:
+                return
+            
+            # Response is dict with 'result' key containing list of trades
+            trades_list = response.get('result', []) if isinstance(response, dict) else response
+            if not trades_list:
+                return
+                
+            trade_file = os.path.join("data", f"trade_history_{symbol.replace('/', '_')}.csv")
+            
+            # Read existing trades for FIFO matching
+            existing_ids = set()
+            buy_queue = deque()  # FIFO queue for buys: [(price, size, trade_id), ...]
+            sell_queue = deque()  # FIFO queue for sells: [(price, size, trade_id), ...]
+            
+            if os.path.exists(trade_file):
+                with open(trade_file, 'r') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        note = row.get('note', '')
+                        if note.startswith('Fill '):
+                            trade_id = note.replace('Fill ', '')
+                            existing_ids.add(trade_id)
+                            
+                            # Build FIFO queues from existing trades
+                            direction = row.get('direction', '')
+                            side = row.get('side', '')
+                            if direction == 'increase':
+                                price = float(row.get('price', 0))
+                                amount = float(row.get('amount', 0))
+                                if side == 'buy':
+                                    buy_queue.append((price, amount, trade_id))
+                                else:
+                                    sell_queue.append((price, amount, trade_id))
+            
+            # Sort trades by time (oldest first for correct FIFO)
+            trades_list = sorted(trades_list, key=lambda x: x.get('event_time', 0))
+            
+            # Process new trades
+            new_rows = []
+            for trade in trades_list:
+                trade_id = trade.get('trade_id', trade.get('order_id', ''))
+                if not trade_id or trade_id in existing_ids:
+                    continue
+                    
+                # GRVT trade format
+                is_buyer = trade.get('is_buyer')
+                side = 'buy' if is_buyer else 'sell'
+                price = float(trade.get('price', 0))
+                size = float(trade.get('size', 0))
+                fill_time = int(trade.get('event_time', time.time() * 1e9)) / 1e9
+                realized_pnl = float(trade.get('realized_pnl', 0))
+                fee = float(trade.get('fee', 0))
+                
+                # Direction based on realized_pnl
+                direction = 'increase' if realized_pnl == 0 else 'reduce'
+                
+                # Calculate FIFO grid profit
+                grid_profit = 0.0
+                if direction == 'increase':
+                    # Add to queue
+                    if side == 'buy':
+                        buy_queue.append((price, size, trade_id))
+                    else:
+                        sell_queue.append((price, size, trade_id))
+                else:
+                    # Match with opposite queue (FIFO)
+                    if side == 'buy':
+                        # Buying to close short - match with oldest sell
+                        if sell_queue:
+                            entry_price, _, _ = sell_queue.popleft()
+                            grid_profit = (entry_price - price) * size  # Short profit
+                    else:
+                        # Selling to close long - match with oldest buy
+                        if buy_queue:
+                            entry_price, _, _ = buy_queue.popleft()
+                            grid_profit = (price - entry_price) * size  # Long profit
+                
+                new_rows.append([
+                    fill_time,
+                    'BTC_USDT_Perp',
+                    side,
+                    direction,
+                    price,
+                    size,
+                    round(price * size, 2),
+                    abs(fee),
+                    realized_pnl,
+                    round(grid_profit, 4),  # FIFO calculated grid profit
+                    f"Fill {trade_id[:12]}"
+                ])
+                existing_ids.add(trade_id)
+            
+            # Write new trades
+            if new_rows:
+                file_exists = os.path.exists(trade_file) and os.path.getsize(trade_file) > 0
+                with open(trade_file, 'a', newline='') as f:
+                    writer = csv.writer(f)
+                    if not file_exists:
+                        writer.writerow(['timestamp', 'symbol', 'side', 'direction', 'price', 'amount', 'cost', 'rebate', 'realized_pnl', 'grid_profit', 'note'])
+                    writer.writerows(new_rows)
+                self.logger.info(f"Saved {len(new_rows)} new trades to history")
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch trades: {e}")

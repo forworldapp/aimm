@@ -4,6 +4,7 @@
 
 | Version | Description |
 |---------|-------------|
+| **v2.3.0** | Risk Management Update (FIFO Grid Profit, Max Position, Circuit Breaker) |
 | **v2.2** | Live Trading 지원, GRVT API 호환성 수정 |
 | v2.0.0-rc1 | Production Ready Build |
 | v1.9.4 | Fix: grid_profit 초기화 |

@@ -87,6 +87,8 @@ class MarketMaker:
         # self.amount = float(Config.get("strategy", "order_amount", 0.001))
         self.refresh_interval = int(Config.get("strategy", "refresh_interval", 3))
         self.skew_factor = float(Config.get("risk", "inventory_skew_factor", 0.05))
+        self.max_position_usd = float(Config.get("risk", "max_position_usd", 500.0))  # Position limit
+        self.max_loss_usd = float(Config.get("risk", "max_loss_usd", 50.0))  # Circuit breaker
         self.grid_layers = int(Config.get("strategy", "grid_layers", 3))
         self.entry_anchor_mode = Config.get("strategy", "entry_anchor_mode", False)
         
@@ -97,7 +99,7 @@ class MarketMaker:
         self.filter_strategy = self._initialize_filter(self.trend_strategy)
         self.rsi_filter = RSIFilter() # Auxiliary filter
         
-        self.logger.info(f"Loaded Params: Layers={self.grid_layers}, Strategy={self.trend_strategy} ({self.filter_strategy.name if self.filter_strategy else 'OFF'})")
+        self.logger.info(f"Loaded Params: Layers={self.grid_layers}, MaxPos=${self.max_position_usd}, MaxLoss=${self.max_loss_usd}")
         
         self.risk_manager = RiskManager()
         self.risk_manager.max_drawdown = float(Config.get("risk", "max_drawdown_pct", 0.10))
@@ -358,6 +360,15 @@ class MarketMaker:
         current_pos_qty = position.get('amount', 0.0)
         self.inventory = current_pos_qty
         
+        # --- Circuit Breaker Check ---
+        unrealized_pnl = position.get('unrealizedPnL', 0.0)
+        if unrealized_pnl < -self.max_loss_usd:
+            self.logger.critical(f"🚨 CIRCUIT BREAKER: Loss ${abs(unrealized_pnl):.2f} exceeds max ${self.max_loss_usd:.2f}")
+            self.logger.critical("Cancelling all orders and stopping bot!")
+            await self.exchange.cancel_all_orders(self.symbol)
+            self.is_active = False
+            return
+        
         # Log Status
         rsi_status = self.rsi_filter.analyze(self.candles)
         # 1. Detect Regime & Apply Latch
@@ -462,6 +473,17 @@ class MarketMaker:
             if 'neutral' in effective_regime:
                 allow_buy = True
                 allow_sell = True
+        
+        # --- 4.1 Max Position Limit ---
+        # Block further accumulation when position exceeds max_position_usd
+        position_usd = abs(current_pos_qty) * mid_price
+        if position_usd >= self.max_position_usd:
+            if current_pos_qty > 0:
+                allow_buy = False  # Long position at limit → block buying
+                self.logger.debug(f"Max position reached: ${position_usd:.0f} >= ${self.max_position_usd:.0f}, blocking BUY")
+            elif current_pos_qty < 0:
+                allow_sell = False  # Short position at limit → block selling
+                self.logger.debug(f"Max position reached: ${position_usd:.0f} >= ${self.max_position_usd:.0f}, blocking SELL")
                 
         # --- 5. Generate Grid Orders ---
         buy_orders = []
@@ -547,6 +569,9 @@ class MarketMaker:
                 open_orders=open_orders,
                 equity=status.get('total_equity', 0.0)
             )
+            # Also fetch and save trade history for dashboard
+            if hasattr(self.exchange, 'fetch_and_save_trades'):
+                self.exchange.fetch_and_save_trades(self.symbol)
 
     async def run(self):
         self.logger.info("Strategy Started")

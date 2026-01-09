@@ -87,6 +87,9 @@ drawdown_input = st.sidebar.slider("Max Drawdown %", 0.01, 0.20, value=current_d
 current_pos_usd = float(config_data.get('risk', {}).get('max_position_usd', 1000.0))
 pos_limit = st.sidebar.number_input("Max Pos (USD)", 100.0, 10000.0, value=current_pos_usd)
 
+current_loss_limit = float(config_data.get('risk', {}).get('max_loss_usd', 50.0))
+loss_limit = st.sidebar.number_input("🚨 Max Loss (USD)", 10.0, 500.0, value=current_loss_limit, help="Circuit Breaker: Bot stops if unrealized loss exceeds this")
+
 current_order_usd = float(config_data.get('strategy', {}).get('order_size_usd', 100.0))
 order_size_usd = st.sidebar.number_input("Order Size (USD)", 10.0, 5000.0, value=current_order_usd, step=10.0)
 
@@ -101,6 +104,7 @@ if st.sidebar.button("💾 Apply & Reload Bot"):
     config_data['risk']['max_drawdown_pct'] = drawdown_input
     config_data['risk']['max_drawdown_pct'] = drawdown_input
     config_data['risk']['max_position_usd'] = pos_limit
+    config_data['risk']['max_loss_usd'] = loss_limit
     config_data['strategy']['order_size_usd'] = order_size_usd
     
     # Save YAML
@@ -376,31 +380,59 @@ if os.path.exists(trade_file):
         # Handle mixed column formats (old=9, new=10 columns)
         df_trade = pd.read_csv(trade_file, on_bad_lines='skip')
         if not df_trade.empty:
-            # Convert to KST
-            df_trade['datetime'] = pd.to_datetime(df_trade['timestamp'], unit='s', utc=True)
+            # Convert to KST - handle both seconds and nanoseconds timestamps
+            ts = df_trade['timestamp'].astype(float)
+            # If timestamp > 1e15, it's nanoseconds (GRVT format)
+            if ts.max() > 1e15:
+                ts = ts / 1e9  # Convert to seconds
+            df_trade['datetime'] = pd.to_datetime(ts, unit='s', utc=True)
             df_trade['datetime'] = df_trade['datetime'].dt.tz_convert('Asia/Seoul')
             
-            # Match new CSV Header: timestamp, symbol, side, price, amount, cost, rebate, realized_pnl, grid_profit, note
-            # Handle both old and new format - Grid Profit at the end after Realized PnL
-            display_cols = ['datetime', 'note', 'symbol', 'side', 'price', 'amount', 'realized_pnl']
-            if 'grid_profit' in df_trade.columns:
-                display_cols.append('grid_profit')  # Add AFTER realized_pnl (at end)
-            
-            df_display = df_trade[[c for c in display_cols if c in df_trade.columns]].sort_values(by='datetime', ascending=False)
-            
-            column_config = {
-                "datetime": st.column_config.DatetimeColumn("Time (KST)", format="MM-DD HH:mm:ss"),
-                "note": "Action",
-                "price": st.column_config.NumberColumn("Price", format="$%.2f"),
-                "realized_pnl": st.column_config.NumberColumn("Realized PnL", format="$%.4f"),
-            }
-            if 'grid_profit' in df_trade.columns:
-                column_config["grid_profit"] = st.column_config.NumberColumn("🎯 Grid P/L", format="$%.4f")
+            # Display columns - handle both Paper mode and Live mode
+            if 'direction' in df_trade.columns:
+                # Live mode format with direction column
+                display_cols = ['datetime', 'side', 'direction', 'price', 'amount', 'realized_pnl', 'grid_profit']
+                df_display = df_trade[[c for c in display_cols if c in df_trade.columns]].sort_values(by='datetime', ascending=False)
+                column_config = {
+                    "datetime": st.column_config.DatetimeColumn("Time (KST)", format="MM-DD HH:mm:ss"),
+                    "side": "Side",
+                    "direction": "Direction",
+                    "price": st.column_config.NumberColumn("Price", format="$%.1f"),
+                    "amount": st.column_config.NumberColumn("Size", format="%.4f"),
+                    "realized_pnl": st.column_config.NumberColumn("Realized PnL", format="$%.4f"),
+                    "grid_profit": st.column_config.NumberColumn("🎯 Grid P/L", format="$%.4f"),
+                }
+            elif 'usd_value' in df_trade.columns:
+                # Old Live mode format
+                display_cols = ['datetime', 'side', 'price', 'size', 'usd_value']
+                df_display = df_trade[[c for c in display_cols if c in df_trade.columns]].sort_values(by='datetime', ascending=False)
+                column_config = {
+                    "datetime": st.column_config.DatetimeColumn("Time (KST)", format="MM-DD HH:mm:ss"),
+                    "side": "Side",
+                    "price": st.column_config.NumberColumn("Price", format="$%.1f"),
+                    "size": st.column_config.NumberColumn("Size", format="%.4f"),
+                    "usd_value": st.column_config.NumberColumn("USD", format="$%.2f"),
+                }
+            else:
+                # Paper mode format
+                display_cols = ['datetime', 'note', 'symbol', 'side', 'price', 'amount', 'realized_pnl']
+                if 'grid_profit' in df_trade.columns:
+                    display_cols.append('grid_profit')
+                df_display = df_trade[[c for c in display_cols if c in df_trade.columns]].sort_values(by='datetime', ascending=False)
+                column_config = {
+                    "datetime": st.column_config.DatetimeColumn("Time (KST)", format="MM-DD HH:mm:ss"),
+                    "note": "Action",
+                    "price": st.column_config.NumberColumn("Price", format="$%.2f"),
+                    "realized_pnl": st.column_config.NumberColumn("Realized PnL", format="$%.4f"),
+                }
+                if 'grid_profit' in df_trade.columns:
+                    column_config["grid_profit"] = st.column_config.NumberColumn("🎯 Grid P/L", format="$%.4f")
             
             st.dataframe(
-                df_display, 
+                df_display.head(20),  # Show last 20 trades
                 use_container_width=True,
-                column_config=column_config
+                column_config=column_config,
+                hide_index=True
             )
             
             csv_data = df_trade.to_csv(index=False).encode('utf-8')

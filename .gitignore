@@ -68,3 +68,7 @@ certifi/
 urllib3/
 *.dist-info/
 *.libs/
+
+# Temporary error logs
+startup_error.txt
+*.tmp

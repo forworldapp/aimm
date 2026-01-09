@@ -40,7 +40,7 @@ st.sidebar.title("⚙️ Configuration")
 # (Rest of Sidebar)
 
 # Refresh Control
-refresh_interval = st.sidebar.slider("Refresh Interval (sec)", 1, 60, 5)
+refresh_interval = st.sidebar.slider("Refresh Interval (sec)", 1, 60, 10)
 auto_refresh = st.sidebar.checkbox("Enable Auto-Refresh", value=True)
 
 CONFIG_PATH = "config.yaml"

@@ -384,6 +384,11 @@ class PaperGrvtExchange(GrvtExchange):
         self.market_regime = regime
         self._save_status() # Force save so dashboard updates immediately
 
+    def set_as_metrics(self, metrics: dict):
+        """Set Avellaneda-Stoikov model metrics for dashboard display."""
+        self.as_metrics = metrics
+        # Don't force save here - will be saved in next cycle
+
     def _save_status(self):
         """Save current snapshot for dashboard. Direct write to avoid Windows lock issues."""
         status = {
@@ -399,7 +404,15 @@ class PaperGrvtExchange(GrvtExchange):
             "market_regime": getattr(self, 'market_regime', 'unknown'),
             "regime": getattr(self, 'market_regime', 'unknown'),
             "cumulative_grid_profit": self.cumulative_grid_profit,
-            "last_increase_price": self.last_increase_price
+            "last_increase_price": self.last_increase_price,
+            # A&S Model Metrics (populated by strategy)
+            "as_metrics": getattr(self, 'as_metrics', {
+                "reservation_price": 0.0,
+                "optimal_spread": 0.0,
+                "volatility_sigma": 0.0,
+                "gamma": 0.0,
+                "kappa": 0.0
+            })
         }
 
         try:

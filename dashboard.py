@@ -318,6 +318,37 @@ elif "SELL" in regime:
 else:
     st.info(f"🚦 Regime: {regime}")
 
+# ============================================================
+# MODULAR COMPONENT: Avellaneda-Stoikov Metrics
+# To remove: Delete this entire block (lines marked with A&S)
+# ============================================================
+as_metrics = status.get('as_metrics', {})
+if as_metrics and as_metrics.get('reservation_price', 0) > 0:
+    st.markdown("### 📐 A&S Model")
+    col_as1, col_as2, col_as3, col_as4 = st.columns(4)
+    
+    with col_as1:
+        res_price = as_metrics.get('reservation_price', 0)
+        mid = status.get('mid_price', 0)
+        delta = res_price - mid if mid > 0 else 0
+        st.metric("📍 예약가격", f"${res_price:,.1f}", delta=f"{delta:+.1f}")
+    
+    with col_as2:
+        spread = as_metrics.get('optimal_spread', 0)
+        st.metric("📏 스프레드", f"{spread:.3f}%")
+    
+    with col_as3:
+        sigma = as_metrics.get('volatility_sigma', 0)
+        st.metric("📊 변동성 (σ)", f"{sigma:.3f}%")
+    
+    with col_as4:
+        gamma = as_metrics.get('gamma', 0)
+        kappa = as_metrics.get('kappa', 0)
+        st.metric("⚙️ γ / κ", f"{gamma} / {kappa}")
+# ============================================================
+# END: Avellaneda-Stoikov Metrics Component
+# ============================================================
+
 # --- Charts Section ---
 st.divider()
 col_chart1, col_chart2 = st.columns(2)

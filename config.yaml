@@ -1,12 +1,12 @@
 exchange:
   env: prod
-  mode: paper  # PAPER TRADING (Simulation)
+  mode: paper
   symbol: BTC_USDT_Perp
 risk:
-  inventory_skew_factor: 0.005 # Increased for stronger inventory balancing
-  max_drawdown_pct: 0.05  # 5% max drawdown (conservative)
-  max_position_usd: 5000.0  # $5000 max position (Paper Trading)
-  max_loss_usd: 50.0  # Circuit breaker: stop if loss exceeds this
+  inventory_skew_factor: 0.005
+  max_drawdown_pct: 0.05
+  max_loss_usd: 50.0
+  max_position_usd: 5000.0
 strategy:
   bollinger:
     period: 20
@@ -14,8 +14,8 @@ strategy:
   dynamic_spread:
     enabled: true
     reference_atr: 100.0
-  entry_anchor_mode: false # Disabled per user request (Conservative Mode)
-  grid_layers: 5
+  entry_anchor_mode: false
+  grid_layers: 7
   name: market_maker
   order_amount: 0.0
   order_size_usd: 200.0
@@ -24,5 +24,13 @@ strategy:
     overbought: 70
     oversold: 30
     period: 14
-  spread_pct: 0.005 # Increased to 0.5% (Conservative)
+  spread_pct: 0.005
   trend_strategy: bollinger
+  # Avellaneda-Stoikov Model Parameters
+  avellaneda_stoikov:
+    enabled: true
+    gamma: 1.0  # Risk aversion (conservative - tighter spread)
+    kappa: 1000  # Very high liquidity (BTC/USDT)
+    session_length_hours: 24  # Trading session length
+    min_spread: 0.001  # Min 0.1% (low volatility)
+    max_spread: 0.01   # Max 1.0% (high volatility)

@@ -274,6 +274,120 @@ class MarketMaker:
         return min(multiplier, 5.0)
 
     def _calculate_dynamic_spread(self):
+        """
+        Avellaneda-Stoikov Optimal Spread Calculation.
+        
+        Formula: δ = γ × σ² × (T-t) + (2/γ) × ln(1 + γ/κ)
+        
+        Returns spread as a fraction (e.g., 0.005 = 0.5%)
+        """
+        import math
+        
+        as_conf = Config.get("strategy", "avellaneda_stoikov", {})
+        if not as_conf.get('enabled', False):
+            # Fallback to legacy ATR-based spread
+            return self._calculate_legacy_spread()
+        
+        # A&S Parameters
+        gamma = float(as_conf.get('gamma', 0.3))  # Risk aversion
+        kappa = float(as_conf.get('kappa', 1.5))  # Order book liquidity
+        min_spread = float(as_conf.get('min_spread', 0.001))
+        max_spread = float(as_conf.get('max_spread', 0.02))
+        session_hours = float(as_conf.get('session_length_hours', 24))
+        
+        # Calculate volatility (σ) - annualized returns std
+        sigma = self._calculate_volatility_sigma()
+        
+        # Time factor (T-t): Normalized to session length
+        # For 24/7 crypto, we use a rolling window approach
+        # t/T approaches 1 as we near "session end" (less aggressive)
+        # We keep (T-t) relatively stable at 0.5 for continuous trading
+        time_factor = 0.5  # Neutral time factor for crypto markets
+        
+        # Optimal Spread Formula
+        try:
+            # Term 1: Risk-adjusted volatility component
+            # Scale σ by 100 so micro-volatility has meaningful impact
+            # Without scaling: 0.01% σ → σ²=0.000001% → negligible
+            # With scaling: 0.01% × 100 = 1% → σ²=0.01% → meaningful
+            sigma_scaled = sigma * 100
+            term1 = gamma * (sigma_scaled ** 2) * time_factor
+            
+            # Term 2: Liquidity-adjusted component (base spread)
+            term2 = (2 / gamma) * math.log(1 + gamma / kappa)
+            
+            optimal_spread = term1 + term2
+            
+            # Clamp to configured bounds
+            optimal_spread = max(min_spread, min(max_spread, optimal_spread))
+            
+            self.logger.debug(f"A&S Spread: σ={sigma:.4f}, γ={gamma}, κ={kappa} → δ={optimal_spread:.4f}")
+            
+        except Exception as e:
+            self.logger.warning(f"A&S spread calc error: {e}, using base spread")
+            optimal_spread = self.base_spread
+        
+        return optimal_spread
+    
+    def _calculate_volatility_sigma(self) -> float:
+        """
+        Calculate market volatility (σ) for A&S model.
+        Uses rolling standard deviation of log returns.
+        """
+        if len(self.price_history) < 20:
+            return 0.001  # Default low volatility
+        
+        prices = self.price_history[-20:]
+        
+        # Calculate log returns
+        returns = []
+        for i in range(1, len(prices)):
+            if prices[i-1] > 0:
+                log_return = (prices[i] - prices[i-1]) / prices[i-1]
+                returns.append(log_return)
+        
+        if len(returns) < 5:
+            return 0.001
+        
+        # Standard deviation of returns (volatility proxy)
+        sigma = statistics.stdev(returns)
+        
+        # Scale to reasonable range (prevent extreme values)
+        sigma = max(0.0001, min(0.1, sigma))
+        
+        return sigma
+    
+    def _calculate_reservation_price(self, mid_price: float, inventory_ratio: float) -> float:
+        """
+        Avellaneda-Stoikov Reservation Price.
+        
+        Formula: r = s - q × γ × σ² × (T-t)
+        
+        This shifts the reference price based on inventory position.
+        - Long position (q > 0): Reservation price < mid price (encourage selling)
+        - Short position (q < 0): Reservation price > mid price (encourage buying)
+        """
+        as_conf = Config.get("strategy", "avellaneda_stoikov", {})
+        if not as_conf.get('enabled', False):
+            return mid_price
+        
+        gamma = float(as_conf.get('gamma', 0.3))
+        sigma = self._calculate_volatility_sigma()
+        time_factor = 0.5  # Neutral for 24/7 markets
+        
+        # q = inventory ratio (-1 to +1 range)
+        q = inventory_ratio
+        
+        # Reservation price adjustment
+        adjustment = q * gamma * (sigma ** 2) * time_factor * mid_price
+        
+        reservation_price = mid_price - adjustment
+        
+        self.logger.debug(f"A&S Reservation: mid={mid_price:.2f}, q={q:.3f} → r={reservation_price:.2f}")
+        
+        return reservation_price
+    
+    def _calculate_legacy_spread(self):
         """Calculate spread based on ATR (Volatility) with USD limits."""
         conf = Config.get("strategy", "dynamic_spread", {})
         if not conf.get('enabled', False):
@@ -412,17 +526,28 @@ class MarketMaker:
         
         max_skew_qty = estimated_qty * 20 
         inventory_ratio = max(-1.0, min(1.0, current_pos_qty / max_skew_qty))
-        inventory_skew = inventory_ratio * self.skew_factor * -1 
-        trend_skew = self._get_trend_skew()
-        total_skew = inventory_skew + trend_skew
         
-        # Determine Spread - Always use dynamic spread for base grid
-        # Signal boost is handled separately with extra aggressive orders
+        # Determine Spread using A&S formula (or legacy)
         final_spread = self._calculate_dynamic_spread()
         
-        skewed_mid = mid_price * (1 + total_skew)
-        target_bid = round_tick_size(skewed_mid * (1 - final_spread / 2), self.tick_size)
-        target_ask = round_tick_size(skewed_mid * (1 + final_spread / 2), self.tick_size)
+        # --- A&S Reservation Price ---
+        # Replace simple skew with Avellaneda-Stoikov reservation price
+        # This provides more sophisticated inventory-based price adjustment
+        reservation_price = self._calculate_reservation_price(mid_price, inventory_ratio)
+        
+        target_bid = round_tick_size(reservation_price * (1 - final_spread / 2), self.tick_size)
+        target_ask = round_tick_size(reservation_price * (1 + final_spread / 2), self.tick_size)
+        
+        # --- Push A&S Metrics to Exchange for Dashboard ---
+        if hasattr(self.exchange, 'set_as_metrics'):
+            as_conf = Config.get("strategy", "avellaneda_stoikov", {})
+            self.exchange.set_as_metrics({
+                "reservation_price": round(reservation_price, 2),
+                "optimal_spread": round(final_spread * 100, 4),  # as percentage
+                "volatility_sigma": round(self._calculate_volatility_sigma() * 100, 4),  # as percentage
+                "gamma": float(as_conf.get('gamma', 0.3)),
+                "kappa": float(as_conf.get('kappa', 1.5))
+            })
 
         # Dropdown Check (Pass)
 

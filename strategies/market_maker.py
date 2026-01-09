@@ -416,14 +416,9 @@ class MarketMaker:
         trend_skew = self._get_trend_skew()
         total_skew = inventory_skew + trend_skew
         
-        # Determine Spread based on EFFECTIVE regime
-        # If Signal (or Latched Signal), use aggressive tight spread? 
-        # Actually logic says: if signal, tight spread.
-        if 'buy_signal' in effective_regime or 'sell_signal' in effective_regime:
-            # Aggressive Entry: Tight spread (10% of base) for execution
-            final_spread = self.base_spread * 0.1 
-        else:
-            final_spread = self._calculate_dynamic_spread()
+        # Determine Spread - Always use dynamic spread for base grid
+        # Signal boost is handled separately with extra aggressive orders
+        final_spread = self._calculate_dynamic_spread()
         
         skewed_mid = mid_price * (1 + total_skew)
         target_bid = round_tick_size(skewed_mid * (1 - final_spread / 2), self.tick_size)
@@ -458,21 +453,10 @@ class MarketMaker:
                  target_bid = min(target_bid, entry_price * (1 + loss_tolerance))
 
         # --- 4. Permission Flags ---
+        # Always allow both sides for grid trading (Signal Boost strategy)
+        # Only RSI extreme conditions block orders
         allow_buy = rsi_status != 'overbought'
         allow_sell = rsi_status != 'oversold'
-        
-        if self.filter_strategy and 'BB' in self.filter_strategy.name:
-            # Signal Logic (only apply after enough candles for Bollinger calculation)
-            if len(self.candles) >= 20:
-                if 'buy_signal' not in effective_regime:
-                    allow_buy = False # Default block unless neutral logic overrides
-                if 'sell_signal' not in effective_regime:
-                    allow_sell = False
-
-            # Neutral/Waiting Logic: Allow Grid Trading (Accumulation)
-            if 'neutral' in effective_regime or 'waiting' in effective_regime:
-                allow_buy = True
-                allow_sell = True
         
         # --- 4.1 Max Position Limit ---
         # Block further accumulation when position exceeds max_position_usd
@@ -511,10 +495,25 @@ class MarketMaker:
                 buy_orders.append((bid_p, qty))
             if allow_sell:
                 sell_orders.append((ask_p, qty))
+        
+        # --- 5.1 Signal Boost: Add aggressive orders when signal detected ---
+        # This adds EXTRA orders close to market price in signal direction
+        if 'buy_signal' in effective_regime and allow_buy:
+            # Add 2 extra aggressive buy orders very close to mid price
+            for i in range(2):
+                aggressive_price = round_tick_size(mid_price * (1 - 0.0005 * (i + 1)), self.tick_size)  # 0.05%, 0.1% below mid
+                buy_orders.append((aggressive_price, qty))
+            self.logger.info(f"📈 SIGNAL BOOST: +2 aggressive BUY orders near ${mid_price:.0f}")
+        elif 'sell_signal' in effective_regime and allow_sell:
+            # Add 2 extra aggressive sell orders very close to mid price
+            for i in range(2):
+                aggressive_price = round_tick_size(mid_price * (1 + 0.0005 * (i + 1)), self.tick_size)  # 0.05%, 0.1% above mid
+                sell_orders.append((aggressive_price, qty))
+            self.logger.info(f"📉 SIGNAL BOOST: +2 aggressive SELL orders near ${mid_price:.0f}")
             
         # --- 6. Smart Order Management (v1.9.1) ---
-        # Only update orders if prices changed significantly (>0.1% tolerance)
-        PRICE_TOLERANCE = 0.001  # 0.1%
+        # Only update orders if prices changed significantly (>0.5% tolerance for stable/conservative mode)
+        PRICE_TOLERANCE = 0.005  # 0.5%
         
         # Get existing orders (Support both GRVT API format and Paper Exchange format)
         existing_orders = await self.exchange.get_open_orders(self.symbol)

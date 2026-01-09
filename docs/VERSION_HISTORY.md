@@ -4,6 +4,7 @@
 
 | Version | Description |
 |---------|-------------|
+| **v2.4.0** | Signal Boost Strategy: 시그널 감지 시 공격적 추가 주문, 양방향 그리드 유지 |
 | **v2.3.2** | Fix: Dashboard refresh (2s), Paper I/O Stability, Tolerance 0.1% |
 | **v2.3.1** | Hotfix: Order Size $200 (Min Notional), Max Loss UI |
 | **v2.3.0** | Risk Management Update (FIFO Grid Profit, Max Position, Circuit Breaker) |

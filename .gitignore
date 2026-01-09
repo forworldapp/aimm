@@ -49,6 +49,7 @@ logs/
 data/*.json
 # Keep the directory structure
 !data/.gitkeep
+!data/command.json
 
 # Logs
 *.log

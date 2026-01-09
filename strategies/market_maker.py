@@ -478,10 +478,10 @@ class MarketMaker:
             # Amount distribution (USD Based)
             if self.order_size_usd > 0:
                 raw_qty = self.order_size_usd / mid_price
-                # Round to 5 decimals for safety (GRVT supports small fractions usually)
-                qty = round(raw_qty, 5)
-                # Enforce min qty if needed (e.g. 0.0001)
-                qty = max(qty, 0.0001)
+                # Round to 3 decimals for GRVT (0.001 lot size)
+                qty = round(raw_qty, 3)
+                # Enforce min qty (0.001 BTC for GRVT)
+                qty = max(qty, 0.001)
             else:
                 qty = self.amount # Old fixed quantity fallback
             
@@ -494,28 +494,38 @@ class MarketMaker:
         # Only update orders if prices changed significantly (>0.1% tolerance)
         PRICE_TOLERANCE = 0.001  # 0.1%
         
-        # Get existing orders
+        # Get existing orders (GRVT format: legs[0] contains order details)
         existing_orders = await self.exchange.get_open_orders(self.symbol)
-        existing_buys = {o['id']: o['price'] for o in existing_orders if o['side'] == 'buy'}
-        existing_sells = {o['id']: o['price'] for o in existing_orders if o['side'] == 'sell'}
+        existing_buys = {o.get('order_id', o.get('id')): float(o.get('legs', [{}])[0].get('limit_price', 0)) 
+                         for o in existing_orders if o.get('legs') and o['legs'][0].get('is_buying_asset')}
+        existing_sells = {o.get('order_id', o.get('id')): float(o.get('legs', [{}])[0].get('limit_price', 0)) 
+                          for o in existing_orders if o.get('legs') and not o['legs'][0].get('is_buying_asset')}
         
         new_buy_prices = set(p for p, q in buy_orders)
         new_sell_prices = set(p for p, q in sell_orders)
         
-        # Check if orders need update
+        # Check if orders need update (use 0.5% tolerance to avoid constant churn)
+        PRICE_TOLERANCE = 0.005  # 0.5% tolerance
+        
         def prices_match(existing_prices, new_prices, tolerance):
             if len(existing_prices) != len(new_prices):
                 return False
+            if not existing_prices or not new_prices:
+                return len(existing_prices) == len(new_prices)
             existing_set = set(existing_prices.values())
             for new_p in new_prices:
-                if not any(abs(new_p - old_p) / old_p < tolerance for old_p in existing_set if old_p > 0):
+                matched = any(abs(new_p - old_p) / old_p < tolerance for old_p in existing_set if old_p > 0)
+                if not matched:
                     return False
             return True
         
         buys_need_update = not prices_match(existing_buys, new_buy_prices, PRICE_TOLERANCE)
         sells_need_update = not prices_match(existing_sells, new_sell_prices, PRICE_TOLERANCE)
         
-        if buys_need_update or sells_need_update:
+        # Skip update if no new orders to place (avoid cancel+empty replace loop)
+        if not buy_orders and not sell_orders:
+            pass  # Keep existing orders
+        elif buys_need_update or sells_need_update:
             # Cancel and replace only if needed
             await self.exchange.cancel_all_orders(self.symbol)
             
@@ -524,6 +534,19 @@ class MarketMaker:
             for p, q in sell_orders:
                 await self.exchange.place_limit_order(self.symbol, 'sell', p, q)
         # else: Keep existing orders (no action needed)
+        
+        # Save status for dashboard (Live mode)
+        if hasattr(self.exchange, 'save_live_status'):
+            open_orders = await self.exchange.get_open_orders(self.symbol)
+            status = await self.exchange.get_account_summary()
+            self.exchange.save_live_status(
+                symbol=self.symbol,
+                mid_price=mid_price,
+                regime=effective_regime,
+                position=position,
+                open_orders=open_orders,
+                equity=status.get('total_equity', 0.0)
+            )
 
     async def run(self):
         self.logger.info("Strategy Started")

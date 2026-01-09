@@ -1,11 +1,11 @@
 exchange:
   env: prod
-  mode: paper
+  mode: live  # LIVE TRADING ENABLED
   symbol: BTC_USDT_Perp
 risk:
   inventory_skew_factor: 0.001
-  max_drawdown_pct: 0.15
-  max_position_usd: 1000.0
+  max_drawdown_pct: 0.05  # 5% max drawdown (conservative)
+  max_position_usd: 500.0  # $500 max position (conservative)
 strategy:
   bollinger:
     period: 20

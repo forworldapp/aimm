@@ -25,11 +25,13 @@ class GrvtExchange(ExchangeInterface):
     Uses grvt-pysdk for underlying communication.
     """
 
-    def __init__(self, api_key: str, private_key: str, env: str = 'testnet'):
+    def __init__(self, env: str = None):
         self.logger = logging.getLogger(__name__)
-        self.api_key = api_key
-        self.private_key = private_key
-        self.env = env
+        # Load credentials from environment variables
+        self.env = env or os.environ.get('GRVT_ENV', 'testnet')
+        self.api_key = os.environ.get('GRVT_API_KEY')
+        self.private_key = os.environ.get('GRVT_PRIVATE_KEY')
+        self.trading_account_id = os.environ.get('GRVT_TRADING_ACCOUNT_ID')
         self.exchange = None
         
         if GrvtCcxt is None:
@@ -37,17 +39,17 @@ class GrvtExchange(ExchangeInterface):
             return
 
         # Initialize the CCXT-compatible wrapper
-        # Correct usage: env must be GrvtEnv Enum, creds in parameters
-        
         target_env = GrvtEnv.TESTNET
         if self.env == 'prod' or self.env == 'mainnet':
             target_env = GrvtEnv.PROD
-            
+        
+        # SDK requires ALL credentials in parameters dict
         self.exchange = GrvtCcxt(
             env=target_env,
             parameters={
-                'apiKey': self.api_key,
-                'secret': self.private_key,
+                'api_key': self.api_key,
+                'private_key': self.private_key,
+                'trading_account_id': self.trading_account_id
             }
         )
 
@@ -80,16 +82,17 @@ class GrvtExchange(ExchangeInterface):
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                # CCXT standard: create_order(symbol, type, side, amount, price)
+                # GRVT SDK: create_order(symbol, order_type, side, amount, price)
                 order = self.exchange.create_order(
                     symbol=symbol,
-                    type='limit',
+                    order_type='limit',
                     side=side,
                     amount=quantity,
                     price=price
                 )
-                self.logger.info(f"Order placed: {order['id']}")
-                return order['id']
+                order_id = order.get('order_id', order.get('id'))
+                self.logger.info(f"Order placed: {order_id}")
+                return order_id
             except Exception as e:
                 err_msg = str(e).lower()
                 if "rate limit" in err_msg:
@@ -140,13 +143,100 @@ class GrvtExchange(ExchangeInterface):
             # CCXT fetch_positions usually returns a list
             positions = self.exchange.fetch_positions([symbol])
             for pos in positions:
-                if pos['symbol'] == symbol:
+                # GRVT uses 'instrument' instead of 'symbol'
+                pos_symbol = pos.get('instrument', pos.get('symbol', ''))
+                if pos_symbol == symbol:
+                    # GRVT uses 'size' and 'entry_price' keys
+                    size = pos.get('size', pos.get('contracts', 0))
+                    entry = pos.get('entry_price', pos.get('entryPrice', 0))
+                    upnl = pos.get('unrealized_pnl', pos.get('unrealizedPnl', 0))
                     return {
-                        'amount': float(pos['contracts']) if pos['contracts'] else 0.0,
-                        'entryPrice': float(pos['entryPrice']) if pos['entryPrice'] else 0.0,
-                        'unrealizedPnL': float(pos['unrealizedPnl']) if pos['unrealizedPnl'] else 0.0
+                        'amount': float(size) if size else 0.0,
+                        'entryPrice': float(entry) if entry else 0.0,
+                        'unrealizedPnL': float(upnl) if upnl else 0.0
                     }
             return {'amount': 0.0, 'entryPrice': 0.0, 'unrealizedPnL': 0.0}
         except Exception as e:
             self.logger.error(f"Error fetching position: {e}")
             return {'amount': 0.0, 'entryPrice': 0.0, 'unrealizedPnL': 0.0}
+
+    async def get_account_summary(self) -> Dict:
+        """Fetch account summary (equity including unrealized PnL) from GRVT."""
+        if not self.exchange: return {}
+        try:
+            # Use get_account_summary for total_equity with unrealized PnL
+            summary = self.exchange.get_account_summary()
+            total_equity = float(summary.get('total_equity', 0))
+            available = float(summary.get('available_balance', 0))
+            unrealized_pnl = float(summary.get('unrealized_pnl', 0))
+            return {
+                'total_equity': total_equity,
+                'available_balance': available,
+                'unrealized_pnl': unrealized_pnl,
+                'initial_margin': float(summary.get('initial_margin', 0)),
+                'maintenance_margin': float(summary.get('maintenance_margin', 0))
+            }
+        except Exception as e:
+            self.logger.error(f"Error fetching account summary: {e}")
+            return {'total_equity': 0.0, 'available_balance': 0.0, 'unrealized_pnl': 0.0}
+
+    async def cancel_all_orders(self, symbol: str):
+        """Cancel all open orders for a symbol."""
+        if not self.exchange: return
+        try:
+            orders = await self.get_open_orders(symbol)
+            for order in orders:
+                order_id = order.get('order_id', order.get('id'))
+                if order_id:
+                    await self.cancel_order(symbol, order_id)
+            self.logger.info(f"Cancelled all orders for {symbol}")
+        except Exception as e:
+            self.logger.error(f"Error cancelling all orders: {e}")
+
+    def save_live_status(self, symbol: str, mid_price: float, regime: str, 
+                         position: Dict, open_orders: List, equity: float):
+        """Save current status for dashboard (Live mode equivalent of _save_status)."""
+        import json
+        import os
+        import time
+        
+        status_file = os.path.join("data", f"paper_status_{symbol.replace('/', '_')}.json")
+        status = {
+            "timestamp": time.time(),
+            "balance": {"USDT": equity},
+            "position": position,
+            "mid_price": mid_price,
+            "open_orders_list": [
+                {
+                    'side': 'buy' if o.get('legs', [{}])[0].get('is_buying_asset') else 'sell',
+                    'price': float(o.get('legs', [{}])[0].get('limit_price', 0)),
+                    'amount': float(o.get('legs', [{}])[0].get('size', 0))
+                }
+                for o in open_orders if o.get('legs')
+            ],
+            "open_orders": len(open_orders),
+            "market_regime": regime,
+            "regime": regime,
+            "cumulative_grid_profit": 0.0,
+            "last_increase_price": 0.0
+        }
+        
+        try:
+            tmp_file = status_file + ".tmp"
+            with open(tmp_file, "w") as f:
+                json.dump(status, f)
+            os.replace(tmp_file, status_file)
+            
+            # Also save history for charts
+            history_file = os.path.join("data", f"pnl_history_{symbol.replace('/', '_')}.csv")
+            import csv
+            with open(history_file, 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    time.time(),
+                    round(equity, 2),
+                    0,  # Realized PnL (tracked separately in trade history)
+                    round(mid_price, 2)
+                ])
+        except Exception as e:
+            self.logger.warning(f"Failed to save live status: {e}")

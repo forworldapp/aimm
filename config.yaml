@@ -1,6 +1,6 @@
 exchange:
   env: prod
-  mode: live  # LIVE TRADING ENABLED
+  mode: paper  # PAPER TRADING (Simulation)
   symbol: BTC_USDT_Perp
 risk:
   inventory_skew_factor: 0.001

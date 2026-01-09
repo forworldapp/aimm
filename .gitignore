@@ -52,3 +52,19 @@ data/*.json
 
 # Logs
 *.log
+
+# Virtual Environment
+venv/
+
+# Bundled packages (use requirements.txt instead)
+numpy/
+pandas/
+ccxt/
+streamlit/
+plotly/
+aiohttp/
+requests/
+certifi/
+urllib3/
+*.dist-info/
+*.libs/

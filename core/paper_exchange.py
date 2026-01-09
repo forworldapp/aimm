@@ -34,7 +34,7 @@ class PaperGrvtExchange(GrvtExchange):
         # Initialize Real GRVT Exchange for Data
         Config.load()
         # We access the internal ccxt wrapper directly
-        real_exchange = GrvtExchange(Config.GRVT_API_KEY, Config.GRVT_PRIVATE_KEY, Config.get("exchange", "env", "prod"))
+        real_exchange = GrvtExchange(Config.get("exchange", "env", "prod"))
         self.exchange = real_exchange.exchange
         
         # Paper Trading State

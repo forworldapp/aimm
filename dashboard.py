@@ -15,6 +15,8 @@ st.set_page_config(
 )
 
 # --- Title ---
+# Dashboard for GRVT Market Maker Bot
+# Visualizes Real-time Status and Performance - Force Reload
 st.title("🚀 GRVT Market Maker Bot")
 
 # --- Utils ---
@@ -36,12 +38,12 @@ def send_command(action):
         st.error(f"Failed to send command: {e}")
 
 # --- Sidebar Configuration ---
-st.sidebar.title("⚙️ Configuration")
+st.sidebar.header("Configuration")
 # (Rest of Sidebar)
 
 # Refresh Control
-refresh_interval = st.sidebar.slider("Refresh Interval (sec)", 1, 60, 10)
-auto_refresh = st.sidebar.checkbox("Enable Auto-Refresh", value=True)
+refresh_interval = st.sidebar.slider("Refresh Interval (sec)", 1, 60, 2)
+auto_refresh = st.sidebar.checkbox("Auto Refresh", value=True)
 
 CONFIG_PATH = "config.yaml"
 

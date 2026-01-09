@@ -10,6 +10,8 @@ from typing import Dict, List, Optional
 from core.grvt_exchange import GrvtExchange
 from core.config import Config
 
+print("DEBUG: PaperExchange Module Loaded - V2 (Direct Write)")
+
 class PaperGrvtExchange(GrvtExchange):
     """
     Simulated Exchange using Real Mainnet Data (GRVT).
@@ -399,13 +401,14 @@ class PaperGrvtExchange(GrvtExchange):
             "cumulative_grid_profit": self.cumulative_grid_profit,
             "last_increase_price": self.last_increase_price
         }
-        
+
         try:
             # Direct write - simpler and avoids Windows replace() lock issues
             with open(self.status_file, "w") as f:
                 json.dump(status, f)
-        except (PermissionError, OSError):
-            pass  # Skip if locked - dashboard will use cached data
+        except (PermissionError, OSError) as e:
+            self.logger.warning(f"Failed to save status: {e}")
+
 
     def _save_history(self):
         """Append current equity to history CSV."""
@@ -454,6 +457,10 @@ class PaperGrvtExchange(GrvtExchange):
             'id': order_id, 'symbol': symbol, 'side': side,
             'price': price, 'quantity': quantity, 'status': 'open'
         }
+        try:
+            self._save_status() # Force save for dashboard visibility
+        except Exception:
+            pass # Non-critical: don't block order placement if save fails
         return order_id
 
     async def cancel_order(self, symbol: str, order_id: str):

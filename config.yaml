@@ -14,7 +14,7 @@ strategy:
   dynamic_spread:
     enabled: true
     reference_atr: 100.0
-  entry_anchor_mode: true
+  entry_anchor_mode: false # EXPERIMENTAL: Disabled for testing
   grid_layers: 5
   name: market_maker
   order_amount: 0.0

@@ -542,12 +542,19 @@ class MarketMaker:
         new_buy_prices = set(p for p, q in buy_orders)
         new_sell_prices = set(p for p, q in sell_orders)
         
-        # Check if orders need update (use 0.5% tolerance to avoid constant churn)
-        PRICE_TOLERANCE = 0.005  # 0.5% tolerance
+        # Check if orders need update (use 0.1% tolerance as requested)
+        PRICE_TOLERANCE = 0.001  # 0.1% tolerance
         
         def prices_match(existing_prices, new_prices, tolerance):
+            # Strict count check causes constant updates if any order is filled/cancelled externally
+            # if len(existing_prices) != len(new_prices): return False 
+            
+            # Relaxed Check: Ensure all NEW orders are represented in EXISTING orders within tolerance
+            # Does not force update if we have EXTRA existing orders (e.g. manual trades)
+            # But here we want to maintain EXACT grid
             if len(existing_prices) != len(new_prices):
-                return False
+                 return False
+                 
             if not existing_prices or not new_prices:
                 return len(existing_prices) == len(new_prices)
             existing_set = set(existing_prices.values())
@@ -562,11 +569,9 @@ class MarketMaker:
         
         # Debug: Log order comparison
         if buys_need_update or sells_need_update:
-            self.logger.debug(f"Order update needed: buys={buys_need_update}, sells={sells_need_update}")
-            self.logger.debug(f"Existing buys: {list(existing_buys.values())}")
-            self.logger.debug(f"New buy prices: {new_buy_prices}")
-            self.logger.debug(f"Existing sells: {list(existing_sells.values())}")
-            self.logger.debug(f"New sell prices: {new_sell_prices}")
+            self.logger.info(f"Order update needed: buys={buys_need_update}, sells={sells_need_update}")
+            self.logger.info(f"Count diff: Buys {len(existing_buys)} vs {len(new_buy_prices)} | Sells {len(existing_sells)} vs {len(new_sell_prices)}")
+            # self.logger.debug(f"New buy prices: {sorted(list(new_buy_prices))}")
         
         # Skip update if no new orders to place (avoid cancel+empty replace loop)
         if not buy_orders and not sell_orders:

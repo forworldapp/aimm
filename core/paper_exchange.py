@@ -383,7 +383,7 @@ class PaperGrvtExchange(GrvtExchange):
         self._save_status() # Force save so dashboard updates immediately
 
     def _save_status(self):
-        """Save current snapshot for dashboard. Retry on PermissionError."""
+        """Save current snapshot for dashboard. Direct write to avoid Windows lock issues."""
         status = {
             "timestamp": time.time(),
             "balance": self.paper_balance,
@@ -400,26 +400,12 @@ class PaperGrvtExchange(GrvtExchange):
             "last_increase_price": self.last_increase_price
         }
         
-        retries = 10
-        while retries > 0:
-            try:
-                # Atomic write: write to tmp, then replace
-                tmp_file = self.status_file + ".tmp"
-                with open(tmp_file, "w") as f:
-                    json.dump(status, f)
-                    f.flush()
-                    os.fsync(f.fileno())
-                
-                os.replace(tmp_file, self.status_file)
-                break # Success
-            except (PermissionError, OSError) as e:
-                retries -= 1
-                time.sleep(0.1) # Wait 100ms
-                if retries == 0:
-                    pass # Silently skip - dashboard will use cached data
-            except Exception as e:
-                self.logger.error(f"Error saving status: {e}")
-                break
+        try:
+            # Direct write - simpler and avoids Windows replace() lock issues
+            with open(self.status_file, "w") as f:
+                json.dump(status, f)
+        except (PermissionError, OSError):
+            pass  # Skip if locked - dashboard will use cached data
 
     def _save_history(self):
         """Append current equity to history CSV."""

@@ -215,9 +215,20 @@ try:
                     content = f.read()
                     if content.strip():  # Ensure file is not empty
                         data = json.loads(content)
-                        if data and data.get('open_orders_list') is not None:  # Valid status must have orders list
-                            status = data
-                            st.session_state.last_valid_status = data
+                        # Valid status must have: timestamp, balance, position, orders
+                        if (data 
+                            and 'timestamp' in data 
+                            and 'balance' in data 
+                            and 'open_orders_list' in data):
+                            # Check if this data is newer than cached
+                            cached_ts = st.session_state.last_valid_status.get('timestamp', 0)
+                            new_ts = data.get('timestamp', 0)
+                            if new_ts >= cached_ts:
+                                status = data
+                                st.session_state.last_valid_status = data
+                            else:
+                                # Stale data - use cache
+                                status = st.session_state.last_valid_status
                             break
             except (json.JSONDecodeError, PermissionError):
                 time.sleep(0.05)  # Wait 50ms and retry
@@ -225,8 +236,8 @@ try:
 except Exception as e:
     pass  # Silently use cached data
 
-# Fallback to last valid state if current read failed or returned incomplete data
-if not status or not status.get('open_orders_list'):
+# Fallback to last valid state if current read failed
+if not status:
     status = st.session_state.last_valid_status
 
 # --- Metrics Section ---
@@ -266,7 +277,18 @@ with col5:
     st.metric("Open Orders", open_orders)
 
 # Order Details Section (Always Visible)
+# Use separate cache for orders to prevent flickering
+if 'last_valid_orders' not in st.session_state:
+    st.session_state.last_valid_orders = []
+
 orders_list = status.get('open_orders_list', [])
+# Only update cache if we got a non-empty list
+if orders_list:
+    st.session_state.last_valid_orders = orders_list
+else:
+    # Use cached orders if current is empty (race condition)
+    orders_list = st.session_state.last_valid_orders
+
 with st.expander("📋 Grid Order Details", expanded=True):
     if orders_list:
         # Sort: Buy (Desc), Sell (Asc)

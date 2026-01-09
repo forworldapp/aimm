@@ -208,18 +208,25 @@ if 'last_valid_status' not in st.session_state:
 status = {}
 try:
     if os.path.exists(paper_status_file):
-        with open(paper_status_file, "r") as f:
-            data = json.load(f)
-            if data:  # Ensure it's not empty
-                status = data
-                st.session_state.last_valid_status = data # Update cache
+        # Retry read with small delays to handle file locking
+        for attempt in range(3):
+            try:
+                with open(paper_status_file, "r") as f:
+                    content = f.read()
+                    if content.strip():  # Ensure file is not empty
+                        data = json.loads(content)
+                        if data and data.get('open_orders_list') is not None:  # Valid status must have orders list
+                            status = data
+                            st.session_state.last_valid_status = data
+                            break
+            except (json.JSONDecodeError, PermissionError):
+                time.sleep(0.05)  # Wait 50ms and retry
+                continue
 except Exception as e:
-    # On read failure (race condition), fallback to last known good state
-    # This prevents the dashboard from flashing "0"
-    pass
+    pass  # Silently use cached data
 
-# Fallback to last valid state if current read failed
-if not status and st.session_state.last_valid_status:
+# Fallback to last valid state if current read failed or returned incomplete data
+if not status or not status.get('open_orders_list'):
     status = st.session_state.last_valid_status
 
 # --- Metrics Section ---

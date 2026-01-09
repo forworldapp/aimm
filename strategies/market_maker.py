@@ -560,11 +560,20 @@ class MarketMaker:
         buys_need_update = not prices_match(existing_buys, new_buy_prices, PRICE_TOLERANCE)
         sells_need_update = not prices_match(existing_sells, new_sell_prices, PRICE_TOLERANCE)
         
+        # Debug: Log order comparison
+        if buys_need_update or sells_need_update:
+            self.logger.debug(f"Order update needed: buys={buys_need_update}, sells={sells_need_update}")
+            self.logger.debug(f"Existing buys: {list(existing_buys.values())}")
+            self.logger.debug(f"New buy prices: {new_buy_prices}")
+            self.logger.debug(f"Existing sells: {list(existing_sells.values())}")
+            self.logger.debug(f"New sell prices: {new_sell_prices}")
+        
         # Skip update if no new orders to place (avoid cancel+empty replace loop)
         if not buy_orders and not sell_orders:
             pass  # Keep existing orders
         elif buys_need_update or sells_need_update:
             # Cancel and replace only if needed
+            self.logger.info(f"Updating orders: buys_changed={buys_need_update}, sells_changed={sells_need_update}")
             await self.exchange.cancel_all_orders(self.symbol)
             
             for p, q in buy_orders:

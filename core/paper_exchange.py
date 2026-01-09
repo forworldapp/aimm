@@ -400,7 +400,7 @@ class PaperGrvtExchange(GrvtExchange):
             "last_increase_price": self.last_increase_price
         }
         
-        retries = 5
+        retries = 10
         while retries > 0:
             try:
                 # Atomic write: write to tmp, then replace
@@ -414,9 +414,9 @@ class PaperGrvtExchange(GrvtExchange):
                 break # Success
             except (PermissionError, OSError) as e:
                 retries -= 1
-                time.sleep(0.05) # Wait 50ms
+                time.sleep(0.1) # Wait 100ms
                 if retries == 0:
-                    self.logger.warning(f"Failed to save paper status after retries: {e}")
+                    pass # Silently skip - dashboard will use cached data
             except Exception as e:
                 self.logger.error(f"Error saving status: {e}")
                 break

@@ -462,15 +462,15 @@ class MarketMaker:
         allow_sell = rsi_status != 'oversold'
         
         if self.filter_strategy and 'BB' in self.filter_strategy.name:
-            # Signal Logic
-            if 'buy_signal' not in effective_regime:
-                allow_buy = False # Default block unless neutral logic overrides
-            if 'sell_signal' not in effective_regime:
-                allow_sell = False
+            # Signal Logic (only apply after enough candles for Bollinger calculation)
+            if len(self.candles) >= 20:
+                if 'buy_signal' not in effective_regime:
+                    allow_buy = False # Default block unless neutral logic overrides
+                if 'sell_signal' not in effective_regime:
+                    allow_sell = False
 
-            # Neutral Logic: Allow Grid Trading (Accumulation)
-            # Re-enabled per user request (Step 3329)
-            if 'neutral' in effective_regime:
+            # Neutral/Waiting Logic: Allow Grid Trading (Accumulation)
+            if 'neutral' in effective_regime or 'waiting' in effective_regime:
                 allow_buy = True
                 allow_sell = True
         
@@ -516,12 +516,28 @@ class MarketMaker:
         # Only update orders if prices changed significantly (>0.1% tolerance)
         PRICE_TOLERANCE = 0.001  # 0.1%
         
-        # Get existing orders (GRVT format: legs[0] contains order details)
+        # Get existing orders (Support both GRVT API format and Paper Exchange format)
         existing_orders = await self.exchange.get_open_orders(self.symbol)
-        existing_buys = {o.get('order_id', o.get('id')): float(o.get('legs', [{}])[0].get('limit_price', 0)) 
-                         for o in existing_orders if o.get('legs') and o['legs'][0].get('is_buying_asset')}
-        existing_sells = {o.get('order_id', o.get('id')): float(o.get('legs', [{}])[0].get('limit_price', 0)) 
-                          for o in existing_orders if o.get('legs') and not o['legs'][0].get('is_buying_asset')}
+        existing_buys = {}
+        existing_sells = {}
+        
+        for o in existing_orders:
+            order_id = o.get('order_id', o.get('id'))
+            # Paper Exchange format: direct price/side
+            if 'price' in o and 'side' in o:
+                price = float(o.get('price', 0))
+                if o.get('side') == 'buy':
+                    existing_buys[order_id] = price
+                else:
+                    existing_sells[order_id] = price
+            # GRVT API format: legs[0] contains order details
+            elif o.get('legs'):
+                leg = o['legs'][0]
+                price = float(leg.get('limit_price', 0))
+                if leg.get('is_buying_asset'):
+                    existing_buys[order_id] = price
+                else:
+                    existing_sells[order_id] = price
         
         new_buy_prices = set(p for p, q in buy_orders)
         new_sell_prices = set(p for p, q in sell_orders)

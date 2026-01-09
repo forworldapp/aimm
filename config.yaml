@@ -5,7 +5,7 @@ exchange:
 risk:
   inventory_skew_factor: 0.001
   max_drawdown_pct: 0.05  # 5% max drawdown (conservative)
-  max_position_usd: 500.0  # $500 max position (conservative)
+  max_position_usd: 5000.0  # $5000 max position (Paper Trading)
   max_loss_usd: 50.0  # Circuit breaker: stop if loss exceeds this
 strategy:
   bollinger:

@@ -4,6 +4,8 @@
 
 | Version | Description |
 |---------|-------------|
+| **v2.6.0** | ML Regime Detection: K-Means 기반 시장 레짐 감지 및 동적 γ/κ 파라미터 조정 |
+| **v2.5.0** | Avellaneda-Stoikov Model: 학술 논문 기반 동적 스프레드/예약가격 구현 |
 | **v2.4.0** | Signal Boost Strategy: 시그널 감지 시 공격적 추가 주문, 양방향 그리드 유지 |
 | **v2.3.2** | Fix: Dashboard refresh (2s), Paper I/O Stability, Tolerance 0.1% |
 | **v2.3.1** | Hotfix: Order Size $200 (Min Notional), Max Loss UI |
@@ -46,6 +48,52 @@ main (현재 v1.8.2 기반)
     │       └── ... v1.9.x, v2.0.0-rc1
     │
     └── v1.5.x ~ v1.8.x (Paper Trading 최적화)
+```
+
+---
+
+## v2.6.0 변경사항 (2026-01-10)
+
+### 새로운 기능
+- ✅ **ML 레짐 감지**: K-Means 클러스터링으로 4개 시장 레짐 자동 분류
+  - 🟢 `low_vol`: 낮은 변동성 → γ=1.5, κ=2000 (좁은 스프레드)
+  - 🔵 `trend_up`: 상승 추세 → γ=0.5, κ=500 (넓은 스프레드, 매도 선호)
+  - 🔴 `trend_down`: 하락 추세 → γ=0.5, κ=500 (넓은 스프레드, 매수 선호)
+  - 🟠 `high_vol`: 높은 변동성 → γ=0.3, κ=200 (매우 넓은 스프레드)
+- ✅ **동적 파라미터 전환**: 감지된 레짐에 따라 A&S γ/κ 자동 조정
+- ✅ **대시보드 표시**: ML 레짐 실시간 표시 (이모지 컬러 코드)
+
+### 새 파일
+- `ml/regime_detector.py`: K-Means 레짐 감지 모델
+- `data/regime_model.pkl`: 훈련된 모델 저장
+- `data/btc_hourly_1000.csv`: Binance BTC 1시간 캔들 학습 데이터
+
+### 설정
+```yaml
+strategy:
+  ml_regime_enabled: true  # ML 레짐 감지 활성화
+```
+
+---
+
+## v2.5.0 변경사항 (2026-01-09)
+
+### 새로운 기능
+- ✅ **Avellaneda-Stoikov 모델**: 학술 논문 기반 최적 마켓메이킹
+  - 예약가격: `r = s - q × γ × σ² × (T-t)`
+  - 최적 스프레드: `δ = γ × σ² × (T-t) + (2/γ) × ln(1 + γ/κ)`
+- ✅ **변동성 기반 동적 스프레드**: σ(변동성) 증가 시 스프레드 자동 확대
+- ✅ **대시보드 A&S 메트릭**: 예약가격, 스프레드, 변동성, γ/κ 실시간 표시
+
+### 설정
+```yaml
+strategy:
+  avellaneda_stoikov:
+    enabled: true
+    gamma: 1.0    # 위험 회피 계수
+    kappa: 1000   # 유동성 계수
+    min_spread: 0.001
+    max_spread: 0.01
 ```
 
 ---

@@ -325,7 +325,7 @@ else:
 as_metrics = status.get('as_metrics', {})
 if as_metrics and as_metrics.get('reservation_price', 0) > 0:
     st.markdown("### 📐 A&S Model")
-    col_as1, col_as2, col_as3, col_as4 = st.columns(4)
+    col_as1, col_as2, col_as3, col_as4, col_as5 = st.columns(5)
     
     with col_as1:
         res_price = as_metrics.get('reservation_price', 0)
@@ -345,6 +345,16 @@ if as_metrics and as_metrics.get('reservation_price', 0) > 0:
         gamma = as_metrics.get('gamma', 0)
         kappa = as_metrics.get('kappa', 0)
         st.metric("⚙️ γ / κ", f"{gamma} / {kappa}")
+    
+    with col_as5:
+        ml_regime = as_metrics.get('ml_regime', 'disabled')
+        regime_colors = {
+            'low_vol': '🟢', 'trend_up': '🔵', 
+            'trend_down': '🔴', 'high_vol': '🟠',
+            'unknown': '⚪', 'disabled': '⚫'
+        }
+        emoji = regime_colors.get(ml_regime, '⚪')
+        st.metric("🤖 ML 레짐", f"{emoji} {ml_regime}")
 # ============================================================
 # END: Avellaneda-Stoikov Metrics Component
 # ============================================================

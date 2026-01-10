@@ -37,6 +37,14 @@ from core.paper_exchange import PaperGrvtExchange # Assuming this is needed base
 # New Filters Import
 from strategies.filters import RSIFilter, MAFilter, ADXFilter, ATRFilter, BollingerFilter, ComboFilter, ChopFilter
 
+# ML Regime Detection
+try:
+    from ml.regime_detector import RegimeDetector
+    ML_AVAILABLE = True
+except ImportError:
+    ML_AVAILABLE = False
+    RegimeDetector = None
+
 
 def round_tick_size(price, tick_size):
     return round(price / tick_size) * tick_size
@@ -103,6 +111,21 @@ class MarketMaker:
         
         self.risk_manager = RiskManager()
         self.risk_manager.max_drawdown = float(Config.get("risk", "max_drawdown_pct", 0.10))
+        
+        # ML Regime Detector
+        self.ml_regime_enabled = Config.get("strategy", "ml_regime_enabled", False)
+        self.regime_detector = None
+        if self.ml_regime_enabled and ML_AVAILABLE:
+            try:
+                self.regime_detector = RegimeDetector()
+                if self.regime_detector.is_fitted:
+                    self.logger.info("ML Regime Detector loaded successfully")
+                else:
+                    self.logger.warning("ML Regime Detector not fitted, will use static params")
+            except Exception as e:
+                self.logger.warning(f"Failed to load ML Regime Detector: {e}")
+        
+        self.current_ml_regime = "unknown"
 
     def _initialize_filter(self, name):
         name = str(name).lower()
@@ -288,12 +311,28 @@ class MarketMaker:
             # Fallback to legacy ATR-based spread
             return self._calculate_legacy_spread()
         
-        # A&S Parameters
+        # A&S Parameters (base from config)
         gamma = float(as_conf.get('gamma', 0.3))  # Risk aversion
         kappa = float(as_conf.get('kappa', 1.5))  # Order book liquidity
         min_spread = float(as_conf.get('min_spread', 0.001))
         max_spread = float(as_conf.get('max_spread', 0.02))
         session_hours = float(as_conf.get('session_length_hours', 24))
+        
+        # ML Regime Override: Use regime-specific params if available
+        if self.regime_detector and self.regime_detector.is_fitted:
+            try:
+                # Build DataFrame from recent candles for prediction
+                if len(self.candles) >= 50:
+                    regime = self.regime_detector.predict(self.candles.tail(50))
+                    self.current_ml_regime = regime
+                    
+                    ml_params = self.regime_detector.get_params_for_regime(regime)
+                    gamma = ml_params['gamma']
+                    kappa = ml_params['kappa']
+                    
+                    self.logger.debug(f"ML Regime: {regime} → γ={gamma}, κ={kappa}")
+            except Exception as e:
+                self.logger.debug(f"ML regime prediction failed: {e}")
         
         # Calculate volatility (σ) - annualized returns std
         sigma = self._calculate_volatility_sigma()
@@ -546,7 +585,8 @@ class MarketMaker:
                 "optimal_spread": round(final_spread * 100, 4),  # as percentage
                 "volatility_sigma": round(self._calculate_volatility_sigma() * 100, 4),  # as percentage
                 "gamma": float(as_conf.get('gamma', 0.3)),
-                "kappa": float(as_conf.get('kappa', 1.5))
+                "kappa": float(as_conf.get('kappa', 1.5)),
+                "ml_regime": getattr(self, 'current_ml_regime', 'disabled')
             })
 
         # Dropdown Check (Pass)

@@ -235,6 +235,32 @@ class RegimeDetector:
         regime = self.cluster_to_regime.get(cluster, "unknown")
         
         return regime
+
+    def predict_proba(self, df: pd.DataFrame) -> dict:
+        """
+        Predict regime probabilities for blended parameters.
+        Returns dict: {regime_name: probability, ...}
+        """
+        if not self.is_fitted:
+            return {}
+        
+        features, _ = self._calculate_features(df)
+        if len(features) == 0:
+            return {}
+            
+        latest_features = features[-1].reshape(1, -1)
+        features_scaled = self.scaler.transform(latest_features)
+        
+        # Get probabilities for each cluster
+        probs = self.model.predict_proba(features_scaled)[0]
+        
+        # Map cluster probs to regime names
+        regime_probs = {}
+        for cluster_idx, prob in enumerate(probs):
+            regime_name = self.cluster_to_regime.get(cluster_idx, f"cluster_{cluster_idx}")
+            regime_probs[regime_name] = regime_probs.get(regime_name, 0.0) + prob
+            
+        return regime_probs
     
     def fetch_binance_candles(self, symbol="BTCUSDT", interval="1h", limit=100) -> pd.DataFrame:
         """
@@ -284,6 +310,23 @@ class RegimeDetector:
             return "unknown"
         
         return self.predict(df)
+
+    def predict_live_proba(self, symbol="BTCUSDT") -> dict:
+        """
+        Fetch recent data and predict regime probabilities for live trading.
+        """
+        if not self.is_fitted:
+            return {}
+
+        try:
+            df = self.fetch_binance_candles(symbol=symbol, limit=100)
+            if len(df) < 50:
+                print(f"Not enough live data: {len(df)}")
+                return {}
+            return self.predict_proba(df)
+        except Exception as e:
+            print(f"Live probability prediction error: {e}")
+            return {}
     
     def get_params_for_regime(self, regime: str) -> dict:
         """

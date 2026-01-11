@@ -76,6 +76,18 @@ async def run_ml_backtest(data_file: str, initial_balance: float = 10000.0):
     strategy.max_loss_usd = 2000.0
     strategy.max_drawdown_pct = 0.30  # 30%
     
+    # MOCK Regime Prediction for Backtest (Avoid Live API)
+    def mock_predict_live_proba(symbol="BTCUSDT"):
+        if not strategy.regime_detector.is_fitted:
+            return {}
+        # Use injected historical candles
+        if strategy.candles.empty or len(strategy.candles) < 50:
+            return {}
+        return strategy.regime_detector.predict_proba(strategy.candles)
+        
+    # Monkey patch the method
+    strategy.regime_detector.predict_live_proba = mock_predict_live_proba
+    
     # Track metrics
     equity_history = []
     regime_history = []
@@ -91,6 +103,19 @@ async def run_ml_backtest(data_file: str, initial_balance: float = 10000.0):
     try:
         step = 0
         while exchange.next_tick():
+            # INJECT CANDLES: Provide historical context for ML model
+            current_idx = exchange.current_index
+            if current_idx > 50:
+                start_idx = max(0, current_idx - 100)
+                # Slice past candles (simulating closed candles)
+                past_data = df.iloc[start_idx:current_idx].copy()
+                
+                # Format for ML model (needs: open_time, open, high, low, close, volume)
+                past_data['open_time'] = past_data['timestamp'].astype('int64') // 10**6 # ns to ms
+                
+                # Ensure columns exist and map correctly
+                strategy.candles = past_data[['open_time', 'open', 'high', 'low', 'close', 'volume']]
+            
             await strategy.cycle()
             step += 1
             
@@ -170,7 +195,7 @@ async def run_ml_backtest(data_file: str, initial_balance: float = 10000.0):
     }
 
 if __name__ == "__main__":
-    data_file = "data/btc_hourly_1000.csv"
+    data_file = "data/btc_hourly_3000.csv"
     
     if len(sys.argv) > 1:
         data_file = sys.argv[1]

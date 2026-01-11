@@ -336,31 +336,63 @@ class MarketMaker:
         max_spread = float(as_conf.get('max_spread', 0.02))
         session_hours = float(as_conf.get('session_length_hours', 24))
         
-        # ML Regime Override: Use regime-specific params if available
+        
+        # ML Regime Override: Use blended params if GMM probability available
         if self.regime_detector and self.regime_detector.is_fitted:
             try:
-                # Use live Binance data for immediate prediction (bypasses internal candle wait)
-                regime = self.regime_detector.predict_live(symbol="BTCUSDT")
-                self.current_ml_regime = regime
+                # Use live Binance data for probability-based prediction
+                probs = self.regime_detector.predict_live_proba(symbol="BTCUSDT")
                 
-                if regime != "unknown":
-                    ml_params = self.regime_detector.get_params_for_regime(regime)
-                    gamma = ml_params['gamma']
-                    kappa = ml_params['kappa']
+                if probs:
+                    # Determine dominant regime for logging/display
+                    dominant_regime = max(probs, key=probs.get)
+                    self.current_ml_regime = dominant_regime
                     
-                    # Save all ML params for dashboard and cycle use
+                    # Initialize blended params
+                    blended = {
+                        'gamma': 0.0, 'kappa': 0.0, 'skew_factor': 0.0,
+                        'price_tolerance': 0.0, 'grid_spacing': 0.0,
+                        'order_size_mult': 0.0, 'grid_layers': 0.0,
+                        'max_position_mult': 0.0
+                    }
+                    
+                    # Calculate weighted average
+                    for regime, prob in probs.items():
+                        r_params = self.regime_detector.get_params_for_regime(regime)
+                        blended['gamma'] += r_params.get('gamma', 0) * prob
+                        blended['kappa'] += r_params.get('kappa', 0) * prob
+                        blended['skew_factor'] += r_params.get('skew_factor', 0) * prob
+                        blended['price_tolerance'] += r_params.get('price_tolerance', 0) * prob
+                        blended['grid_spacing'] += r_params.get('grid_spacing', 0) * prob
+                        blended['order_size_mult'] += r_params.get('order_size_mult', 0) * prob
+                        blended['grid_layers'] += r_params.get('grid_layers', 0) * prob
+                        blended['max_position_mult'] += r_params.get('max_position_mult', 0) * prob
+                    
+                    # Apply blended params
+                    gamma = blended['gamma']
+                    kappa = blended['kappa']
+                    
                     self._last_gamma = gamma
                     self._last_kappa = kappa
-                    self._ml_skew_factor = ml_params.get('skew_factor', 0.005)
-                    self._ml_price_tolerance = ml_params.get('price_tolerance', 0.001)
-                    self._ml_grid_spacing = ml_params.get('grid_spacing', 0.0012)
-                    self._ml_order_size_mult = ml_params.get('order_size_mult', 1.0)
-                    self._ml_grid_layers = ml_params.get('grid_layers', 7)
-                    self._ml_max_position_mult = ml_params.get('max_position_mult', 1.0)
+                    self._ml_skew_factor = blended['skew_factor']
+                    self._ml_price_tolerance = blended['price_tolerance']
+                    self._ml_grid_spacing = blended['grid_spacing']
+                    self._ml_order_size_mult = blended['order_size_mult']
+                    self._ml_grid_layers = round(blended['grid_layers'])  # Integer for layers
+                    self._ml_max_position_mult = blended['max_position_mult']
                     
-                    self.logger.info(f"🧠 ML: {regime} | γ={gamma} κ={kappa} | grid={self._ml_grid_layers}x{self._ml_grid_spacing*100:.1f}% | pos={self._ml_max_position_mult*100:.0f}%")
+                    # Format probability string for log
+                    prob_str = " ".join([f"{k[:2]}={v:.2f}" for k, v in probs.items() if v > 0.05])
+                    
+                    self.logger.info(f"🧠 ML: {dominant_regime}({probs[dominant_regime]:.2f}) | {prob_str}")
+                    self.logger.info(f"   ↳ Blended: γ={gamma:.2f} κ={kappa:.0f} grid={self._ml_grid_layers}x{self._ml_grid_spacing*100:.2f}%")
+                else:
+                    self.current_ml_regime = "unknown"
+                    
             except Exception as e:
                 self.logger.debug(f"ML regime prediction failed: {e}")
+                import traceback
+                traceback.print_exc()
         
         # Adaptive Tuner Override: Fine-tune based on recent performance
         if self.adaptive_tuner:

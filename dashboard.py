@@ -378,9 +378,9 @@ if as_metrics and as_metrics.get('reservation_price', 0) > 0:
 # ============================================================
 
 # ============================================================
-# MODULAR COMPONENT: ML Learning Metrics
+# MODULAR COMPONENT: ML Learning Metrics (GMM Enhanced)
 # ============================================================
-st.markdown("### 🧠 Machine Learning Status")
+st.markdown("### 🧠 Machine Learning Status (GMM)")
 col_ml1, col_ml2, col_ml3, col_ml4 = st.columns(4)
 
 as_metrics = status.get('as_metrics', {})
@@ -412,8 +412,36 @@ with col_ml4:
         st.metric("🎯 승률 / 조정", f"{win_rate:.0f}% / {adjustments}회")
     else:
         st.metric("🎯 승률 / 조정", "대기중...")
+
+# GMM Extended Parameters Row
+col_gmm1, col_gmm2, col_gmm3, col_gmm4 = st.columns(4)
+
+with col_gmm1:
+    st.metric("🔬 모델", "GMM (v3.0)")
+    
+with col_gmm2:
+    # Grid Layers from ML regime
+    grid_layers = {
+        'low_vol': 10, 'trend_up': 7, 'trend_down': 7, 'high_vol': 5
+    }.get(ml_regime, 7)
+    st.metric("📊 그리드 레이어", f"{grid_layers}개")
+
+with col_gmm3:
+    # Order Size Multiplier
+    order_mult = {
+        'low_vol': '100%', 'trend_up': '80%', 'trend_down': '80%', 'high_vol': '50%'
+    }.get(ml_regime, '100%')
+    st.metric("📦 주문 배수", order_mult)
+
+with col_gmm4:
+    # Max Position Multiplier
+    pos_mult = {
+        'low_vol': '140%', 'trend_up': '100%', 'trend_down': '100%', 'high_vol': '60%'
+    }.get(ml_regime, '100%')
+    st.metric("💰 포지션 한도", pos_mult)
+
 # ============================================================
-# END: ML Learning Metrics
+# END: ML Learning Metrics (GMM Enhanced)
 # ============================================================
 
 # --- Charts Section ---

@@ -347,11 +347,18 @@ class MarketMaker:
                     ml_params = self.regime_detector.get_params_for_regime(regime)
                     gamma = ml_params['gamma']
                     kappa = ml_params['kappa']
-                    # Save for dashboard display
+                    
+                    # Save all ML params for dashboard and cycle use
                     self._last_gamma = gamma
                     self._last_kappa = kappa
+                    self._ml_skew_factor = ml_params.get('skew_factor', 0.005)
+                    self._ml_price_tolerance = ml_params.get('price_tolerance', 0.001)
+                    self._ml_grid_spacing = ml_params.get('grid_spacing', 0.0012)
+                    self._ml_order_size_mult = ml_params.get('order_size_mult', 1.0)
+                    self._ml_grid_layers = ml_params.get('grid_layers', 7)
+                    self._ml_max_position_mult = ml_params.get('max_position_mult', 1.0)
                     
-                    self.logger.info(f"🧠 ML Regime: {regime} → γ={gamma}, κ={kappa}")
+                    self.logger.info(f"🧠 ML: {regime} | γ={gamma} κ={kappa} | grid={self._ml_grid_layers}x{self._ml_grid_spacing*100:.1f}% | pos={self._ml_max_position_mult*100:.0f}%")
             except Exception as e:
                 self.logger.debug(f"ML regime prediction failed: {e}")
         
@@ -594,7 +601,10 @@ class MarketMaker:
         estimated_qty = (self.order_size_usd / mid_price) if mid_price > 0 else self.amount
         if estimated_qty <= 0: estimated_qty = 0.001 # Fallback
         
-        max_skew_qty = estimated_qty * 20 
+        # ML-adjusted skew sensitivity: higher skew_factor = more aggressive inventory adjustment
+        ml_skew_factor = getattr(self, '_ml_skew_factor', 0.005)  # Default 0.5%
+        skew_multiplier = ml_skew_factor / 0.005  # Normalize to base 0.5%
+        max_skew_qty = estimated_qty * 20 / skew_multiplier  # Higher skew = lower threshold
         inventory_ratio = max(-1.0, min(1.0, current_pos_qty / max_skew_qty))
         
         # Determine Spread using A&S formula (or legacy)
@@ -665,32 +675,42 @@ class MarketMaker:
         allow_buy = rsi_status != 'overbought'
         allow_sell = rsi_status != 'oversold'
         
-        # --- 4.1 Max Position Limit ---
-        # Block further accumulation when position exceeds max_position_usd
+        # --- 4.1 Max Position Limit (ML-adjusted) ---
+        # Block further accumulation when position exceeds ML-adjusted max_position_usd
+        ml_max_pos_mult = getattr(self, '_ml_max_position_mult', 1.0)
+        effective_max_position = self.max_position_usd * ml_max_pos_mult
         position_usd = abs(current_pos_qty) * mid_price
-        if position_usd >= self.max_position_usd:
+        if position_usd >= effective_max_position:
             if current_pos_qty > 0:
                 allow_buy = False  # Long position at limit → block buying
-                self.logger.debug(f"Max position reached: ${position_usd:.0f} >= ${self.max_position_usd:.0f}, blocking BUY")
+                self.logger.debug(f"Max position reached: ${position_usd:.0f} >= ${effective_max_position:.0f}, blocking BUY")
             elif current_pos_qty < 0:
                 allow_sell = False  # Short position at limit → block selling
-                self.logger.debug(f"Max position reached: ${position_usd:.0f} >= ${self.max_position_usd:.0f}, blocking SELL")
+                self.logger.debug(f"Max position reached: ${position_usd:.0f} >= ${effective_max_position:.0f}, blocking SELL")
                 
         # --- 5. Generate Grid Orders ---
         buy_orders = []
         sell_orders = []
         
-        # Grid Spacing: 0.12% (Adjusted per user request: ~$100 @ 87k)
-        layer_spacing = max(final_spread, 0.0012) 
+        # Grid Spacing: Use ML-adjusted value or fallback to 0.12%
+        ml_grid = getattr(self, '_ml_grid_spacing', 0.0012)
+        layer_spacing = max(final_spread, ml_grid)
+        
+        # Order Size Multiplier from ML Regime
+        ml_size_mult = getattr(self, '_ml_order_size_mult', 1.0)
+        
+        # Grid Layers: Use ML-adjusted count or fallback to config
+        ml_grid_layers = getattr(self, '_ml_grid_layers', self.grid_layers)
 
-        for i in range(self.grid_layers):
+        for i in range(ml_grid_layers):
             # Linearly spaced grid
             bid_p = round_tick_size(target_bid * (1 - (layer_spacing * i)), self.tick_size)
             ask_p = round_tick_size(target_ask * (1 + (layer_spacing * i)), self.tick_size)
             
-            # Amount distribution (USD Based)
+            # Amount distribution (USD Based) - Apply ML size multiplier
             if self.order_size_usd > 0:
-                raw_qty = self.order_size_usd / mid_price
+                adjusted_size_usd = self.order_size_usd * ml_size_mult
+                raw_qty = adjusted_size_usd / mid_price
                 # Round to 3 decimals for GRVT (0.001 lot size)
                 qty = round(raw_qty, 3)
                 # Enforce min qty (0.001 BTC for GRVT)
@@ -748,8 +768,8 @@ class MarketMaker:
         new_buy_prices = set(p for p, q in buy_orders)
         new_sell_prices = set(p for p, q in sell_orders)
         
-        # Check if orders need update (use 0.1% tolerance as requested)
-        PRICE_TOLERANCE = 0.001  # 0.1% tolerance
+        # Check if orders need update (use ML-adjusted tolerance)
+        PRICE_TOLERANCE = getattr(self, '_ml_price_tolerance', 0.001)  # ML-adjusted or 0.1% default
         
         def prices_match(existing_prices, new_prices, tolerance):
             # Strict count check causes constant updates if any order is filled/cancelled externally

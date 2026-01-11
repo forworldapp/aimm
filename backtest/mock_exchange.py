@@ -158,3 +158,29 @@ class MockExchange(ExchangeInterface):
             pos['unrealizedPnL'] = (mid_price - pos['entryPrice']) * pos['amount']
             
         return pos
+
+    async def cancel_all_orders(self, symbol: str):
+        """Cancel all open orders."""
+        for order_id, order in self.orders.items():
+            if order['status'] == 'open':
+                order['status'] = 'canceled'
+
+    async def get_account_summary(self) -> Dict:
+        """Return account summary for strategy."""
+        row = self._get_current_row()
+        mid_price = (row['best_bid'] + row['best_ask']) / 2
+        total_equity = self.balance['USDT'] + (self.position['amount'] * mid_price)
+        return {
+            'total_equity': total_equity,
+            'balance': self.balance,
+            'position': self.position
+        }
+
+    async def close_position(self, symbol: str):
+        """Close all positions at market price."""
+        if self.position['amount'] != 0:
+            row = self._get_current_row()
+            close_price = row['best_bid'] if self.position['amount'] > 0 else row['best_ask']
+            pnl = (close_price - self.position['entryPrice']) * self.position['amount']
+            self.balance['USDT'] += pnl
+            self.position = {'amount': 0.0, 'entryPrice': 0.0, 'unrealizedPnL': 0.0}

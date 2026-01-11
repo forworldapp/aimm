@@ -29,12 +29,52 @@ class RegimeDetector:
         3: "high_vol"
     }
     
-    # A&S Parameters for each regime
+    # A&S Parameters for each regime (Extended with full trading params)
     REGIME_PARAMS = {
-        "low_vol": {"gamma": 1.5, "kappa": 2000, "description": "Tight spread, stable"},
-        "trend_up": {"gamma": 0.5, "kappa": 500, "description": "Wide spread, favor sells"},
-        "trend_down": {"gamma": 0.5, "kappa": 500, "description": "Wide spread, favor buys"},
-        "high_vol": {"gamma": 0.3, "kappa": 200, "description": "Very wide spread"}
+        "low_vol": {
+            "gamma": 1.5, 
+            "kappa": 2000, 
+            "skew_factor": 0.003,       # Tight skew for stable market
+            "price_tolerance": 0.001,    # 0.1% tolerance
+            "grid_spacing": 0.0010,      # 0.10% grid (tight)
+            "order_size_mult": 1.0,      # Normal order size
+            "grid_layers": 10,           # More layers in stable market
+            "max_position_mult": 1.4,    # 140% max position ($7,000)
+            "description": "Tight spread, stable - aggressive accumulation"
+        },
+        "trend_up": {
+            "gamma": 0.5, 
+            "kappa": 500, 
+            "skew_factor": 0.008,        # Higher skew to sell more
+            "price_tolerance": 0.0015,   # 0.15% tolerance
+            "grid_spacing": 0.0015,      # 0.15% grid
+            "order_size_mult": 0.8,      # Smaller orders in trend
+            "grid_layers": 7,            # Normal layers
+            "max_position_mult": 1.0,    # Normal max position ($5,000)
+            "description": "Wide spread, favor sells - ride the trend"
+        },
+        "trend_down": {
+            "gamma": 0.5, 
+            "kappa": 500, 
+            "skew_factor": 0.008,        # Higher skew to buy more
+            "price_tolerance": 0.0015,   # 0.15% tolerance  
+            "grid_spacing": 0.0015,      # 0.15% grid
+            "order_size_mult": 0.8,      # Smaller orders in trend
+            "grid_layers": 7,            # Normal layers
+            "max_position_mult": 1.0,    # Normal max position ($5,000)
+            "description": "Wide spread, favor buys - accumulate dips"
+        },
+        "high_vol": {
+            "gamma": 0.3, 
+            "kappa": 200, 
+            "skew_factor": 0.002,        # Reduced skew in chaos
+            "price_tolerance": 0.002,    # 0.2% tolerance (wider)
+            "grid_spacing": 0.0020,      # 0.20% grid (wide safety)
+            "order_size_mult": 0.5,      # Half size for risk reduction
+            "grid_layers": 5,            # Fewer layers for safety
+            "max_position_mult": 0.6,    # 60% max position ($3,000)
+            "description": "Very wide spread, conservative - survival mode"
+        }
     }
     
     def __init__(self, model_path="data/regime_model.pkl"):

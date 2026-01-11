@@ -23,7 +23,13 @@ async def run_backtest(data_file: str):
     
     # Initialize Strategy
     # We need to override Config for backtest params if needed
-    Config.load("config.yaml") 
+    Config.load("config.yaml")
+    
+    # Override loss limit for backtest (allow more room)
+    from core.config import Config as cfg
+    cfg._config['risk']['max_loss_usd'] = 500.0
+    cfg._config['risk']['max_drawdown_pct'] = 20.0
+    
     strategy = MarketMaker(exchange)
     
     logger.info("Starting Backtest...")

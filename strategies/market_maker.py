@@ -45,6 +45,14 @@ except ImportError:
     ML_AVAILABLE = False
     RegimeDetector = None
 
+# Adaptive Parameter Tuning
+try:
+    from ml.adaptive_tuner import AdaptiveParameterTuner
+    ADAPTIVE_AVAILABLE = True
+except ImportError:
+    ADAPTIVE_AVAILABLE = False
+    AdaptiveParameterTuner = None
+
 
 def round_tick_size(price, tick_size):
     return round(price / tick_size) * tick_size
@@ -126,6 +134,16 @@ class MarketMaker:
                 self.logger.warning(f"Failed to load ML Regime Detector: {e}")
         
         self.current_ml_regime = "unknown"
+        
+        # Adaptive Parameter Tuner
+        self.adaptive_enabled = Config.get("strategy", "adaptive_tuning_enabled", False)
+        self.adaptive_tuner = None
+        if self.adaptive_enabled and ADAPTIVE_AVAILABLE:
+            try:
+                self.adaptive_tuner = AdaptiveParameterTuner()
+                self.logger.info("Adaptive Parameter Tuner loaded successfully")
+            except Exception as e:
+                self.logger.warning(f"Failed to load Adaptive Tuner: {e}")
 
     def _initialize_filter(self, name):
         name = str(name).lower()
@@ -333,6 +351,16 @@ class MarketMaker:
                     self.logger.debug(f"ML Regime: {regime} → γ={gamma}, κ={kappa}")
             except Exception as e:
                 self.logger.debug(f"ML regime prediction failed: {e}")
+        
+        # Adaptive Tuner Override: Fine-tune based on recent performance
+        if self.adaptive_tuner:
+            try:
+                adaptive_params = self.adaptive_tuner.get_params()
+                gamma = adaptive_params['gamma']
+                kappa = adaptive_params['kappa']
+                self.logger.debug(f"Adaptive Override: γ={gamma}, κ={kappa}")
+            except Exception as e:
+                self.logger.debug(f"Adaptive tuner failed: {e}")
         
         # Calculate volatility (σ) - annualized returns std
         sigma = self._calculate_volatility_sigma()
@@ -579,14 +607,25 @@ class MarketMaker:
         
         # --- Push A&S Metrics to Exchange for Dashboard ---
         if hasattr(self.exchange, 'set_as_metrics'):
-            as_conf = Config.get("strategy", "avellaneda_stoikov", {})
+            # Get actual gamma/kappa from calculation context
+            actual_gamma = gamma if 'gamma' in dir() else 1.0
+            actual_kappa = kappa if 'kappa' in dir() else 1000
+            
+            # Get adaptive tuner metrics if available
+            adaptive_metrics = {}
+            if self.adaptive_tuner:
+                adaptive_metrics = self.adaptive_tuner.get_display_metrics()
+            
             self.exchange.set_as_metrics({
                 "reservation_price": round(reservation_price, 2),
-                "optimal_spread": round(final_spread * 100, 4),  # as percentage
-                "volatility_sigma": round(self._calculate_volatility_sigma() * 100, 4),  # as percentage
-                "gamma": float(as_conf.get('gamma', 0.3)),
-                "kappa": float(as_conf.get('kappa', 1.5)),
-                "ml_regime": getattr(self, 'current_ml_regime', 'disabled')
+                "optimal_spread": round(final_spread * 100, 4),
+                "volatility_sigma": round(self._calculate_volatility_sigma() * 100, 4),
+                "gamma": actual_gamma,
+                "kappa": actual_kappa,
+                "ml_regime": getattr(self, 'current_ml_regime', 'disabled'),
+                "recent_pnl": adaptive_metrics.get('recent_pnl', 0),
+                "win_rate": adaptive_metrics.get('win_rate', 0),
+                "adjustments": adaptive_metrics.get('adjustments', 0)
             })
 
         # Dropdown Check (Pass)

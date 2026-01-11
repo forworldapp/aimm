@@ -355,6 +355,19 @@ if as_metrics and as_metrics.get('reservation_price', 0) > 0:
         }
         emoji = regime_colors.get(ml_regime, '⚪')
         st.metric("🤖 ML 레짐", f"{emoji} {ml_regime}")
+    
+    # Adaptive Tuning Metrics Row
+    if as_metrics.get('adjustments', 0) > 0:
+        col_ad1, col_ad2, col_ad3 = st.columns(3)
+        with col_ad1:
+            recent_pnl = as_metrics.get('recent_pnl', 0)
+            st.metric("📈 최근 PnL", f"${recent_pnl:.2f}", delta_color="normal")
+        with col_ad2:
+            win_rate = as_metrics.get('win_rate', 0)
+            st.metric("🎯 승률", f"{win_rate:.1f}%")
+        with col_ad3:
+            adjustments = as_metrics.get('adjustments', 0)
+            st.metric("🔄 조정 횟수", f"{adjustments}")
 # ============================================================
 # END: Avellaneda-Stoikov Metrics Component
 # ============================================================

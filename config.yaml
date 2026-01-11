@@ -35,3 +35,4 @@ strategy:
     min_spread: 0.001  # Min 0.1% (low volatility)
     max_spread: 0.01   # Max 1.0% (high volatility)
   ml_regime_enabled: true  # Enable ML-based regime detection
+  adaptive_tuning_enabled: true  # Enable online adaptive γ/κ tuning

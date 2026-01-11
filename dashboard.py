@@ -14,6 +14,11 @@ st.set_page_config(
     layout="wide",
 )
 
+# --- Session State Guard Against Double Rendering ---
+if 'render_key' not in st.session_state:
+    st.session_state.render_key = 0
+st.session_state.render_key += 1
+
 # --- Title ---
 # Dashboard for GRVT Market Maker Bot
 # Visualizes Real-time Status and Performance - Force Reload
@@ -372,47 +377,78 @@ if as_metrics and as_metrics.get('reservation_price', 0) > 0:
 # END: Avellaneda-Stoikov Metrics Component
 # ============================================================
 
+# ============================================================
+# MODULAR COMPONENT: ML Learning Metrics
+# ============================================================
+st.markdown("### 🧠 Machine Learning Status")
+col_ml1, col_ml2, col_ml3, col_ml4 = st.columns(4)
+
+as_metrics = status.get('as_metrics', {})
+ml_regime = as_metrics.get('ml_regime', 'disabled')
+
+with col_ml1:
+    regime_descriptions = {
+        'low_vol': '🟢 저변동성 (좁은 스프레드)',
+        'trend_up': '🔵 상승추세 (매도 선호)',
+        'trend_down': '🔴 하락추세 (매수 선호)',
+        'high_vol': '🟠 고변동성 (넓은 스프레드)',
+        'unknown': '⚪ 분석중...',
+        'disabled': '⚫ 비활성'
+    }
+    st.info(regime_descriptions.get(ml_regime, '⚪ Unknown'))
+
+with col_ml2:
+    gamma = as_metrics.get('gamma', 1.0)
+    st.metric("γ (위험회피)", f"{gamma:.2f}")
+    
+with col_ml3:
+    kappa = as_metrics.get('kappa', 1000)
+    st.metric("κ (유동성)", f"{kappa:.0f}")
+
+with col_ml4:
+    adjustments = as_metrics.get('adjustments', 0)
+    win_rate = as_metrics.get('win_rate', 0)
+    if adjustments > 0:
+        st.metric("🎯 승률 / 조정", f"{win_rate:.0f}% / {adjustments}회")
+    else:
+        st.metric("🎯 승률 / 조정", "대기중...")
+# ============================================================
+# END: ML Learning Metrics
+# ============================================================
+
 # --- Charts Section ---
 st.divider()
-col_chart1, col_chart2 = st.columns(2)
 
+# Load chart data BEFORE creating columns
 df_hist = pd.DataFrame()
 try:
     if os.path.exists(history_file):
-        # Try reading with header inference
         df_temp = pd.read_csv(history_file, on_bad_lines='skip')
         
-        # Check if header is missing (e.g. first column is float timestamp)
-        # If 'timestamp' column is missing, likely headerless
         if 'timestamp' not in df_temp.columns and not df_temp.empty:
-             # Reload with explicit column names
              df_temp = pd.read_csv(history_file, names=["timestamp", "total_usdt_value", "realized_pnl", "price"], on_bad_lines='skip')
              
         if not df_temp.empty and len(df_temp) > 0:
-            # Convert to KST (Korea Standard Time)
             df_temp['datetime'] = pd.to_datetime(df_temp['timestamp'], unit='s', utc=True)
-            
-            # Filter Invalid Data (Prevent Memory Explosion from bad timestamps)
             df_temp = df_temp[df_temp['datetime'].dt.year >= 2024]
-            
             df_temp['datetime'] = df_temp['datetime'].dt.tz_convert('Asia/Seoul')
             
-            # Resampling Logic (5s)
-            # Note: resample needs index. dt accessors work, but easier to set index
             df_resampled = df_temp.set_index('datetime').resample('5s').last().dropna().reset_index()
             
             if len(df_resampled) > 12:
-                df_hist = df_resampled.tail(600) # Show last ~50 mins of smoothed data
+                df_hist = df_resampled.tail(600)
             else:
-                df_hist = df_temp.tail(2000) # Fallback to raw data
+                df_hist = df_temp.tail(2000)
 except Exception as e:
-    st.error(f"Error loading history: {e}")
+    pass  # Silent fail, will show "Waiting for data" message
+
+# Create columns AFTER data is loaded
+col_chart1, col_chart2 = st.columns(2)
 
 with col_chart1:
     st.subheader("📈 Equity Curve")
     if not df_hist.empty:
-        fig_equity = px.line(df_hist, x='datetime', y='total_usdt_value', 
-                             title="Total Equity (USDT)", 
+        fig_equity = px.line(df_hist, x='datetime', y='total_usdt_value',
                              labels={'total_usdt_value': 'USDT'})
         
         # High Sensitivity Y-Axis Scaling
@@ -435,8 +471,7 @@ with col_chart1:
 with col_chart2:
     st.subheader("📉 Price History")
     if not df_hist.empty:
-        fig_price = px.line(df_hist, x='datetime', y='price', 
-                            title="BTC Price",
+        fig_price = px.line(df_hist, x='datetime', y='price',
                             labels={'price': 'USDT'})
         
         # High Sensitivity Y-Axis Scaling
@@ -544,6 +579,15 @@ if status:
     except:
         st.caption(f"Last Bot Update: {ts}")
 
+# Use JavaScript-based auto-refresh instead of st.rerun() to prevent double rendering
 if auto_refresh:
-    time.sleep(refresh_interval)
-    st.rerun()
+    st.markdown(
+        f"""
+        <script>
+            setTimeout(function() {{
+                window.location.reload();
+            }}, {refresh_interval * 1000});
+        </script>
+        """,
+        unsafe_allow_html=True
+    )

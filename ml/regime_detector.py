@@ -1,12 +1,13 @@
 """
-ML Regime Detection Model (Phase 2)
-- Uses K-Means clustering to classify market regimes
+ML Regime Detection Model (Phase 3 - GMM Upgrade)
+- Uses Gaussian Mixture Model for probability-based regime classification
 - 4 Regimes: Trending Up, Trending Down, Ranging, High Volatility
+- Outputs regime probabilities for parameter blending
 """
 
 import pandas as pd
 import numpy as np
-from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 import pickle
 import os
@@ -147,17 +148,23 @@ class RegimeDetector:
         # Scale features
         features_scaled = self.scaler.fit_transform(features)
         
-        # K-Means clustering
-        self.model = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+        # Gaussian Mixture Model (GMM) - probability-based clustering
+        self.model = GaussianMixture(
+            n_components=n_clusters, 
+            random_state=42, 
+            covariance_type='full',
+            n_init=5
+        )
         self.model.fit(features_scaled)
+        labels = self.model.predict(features_scaled)
         
         # Analyze clusters to assign regime names
-        self._analyze_clusters(features, self.model.labels_)
+        self._analyze_clusters(features, labels)
         
         self.is_fitted = True
-        print(f"Model fitted on {len(features)} samples")
+        print(f"GMM Model fitted on {len(features)} samples")
         
-        return self.model.labels_
+        return labels
     
     def _analyze_clusters(self, features, labels):
         """

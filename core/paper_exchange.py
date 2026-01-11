@@ -387,7 +387,7 @@ class PaperGrvtExchange(GrvtExchange):
     def set_as_metrics(self, metrics: dict):
         """Set Avellaneda-Stoikov model metrics for dashboard display."""
         self.as_metrics = metrics
-        # Don't force save here - will be saved in next cycle
+        self._save_status()  # Force immediate save so dashboard updates
 
     def _save_status(self):
         """Save current snapshot for dashboard. Direct write to avoid Windows lock issues."""

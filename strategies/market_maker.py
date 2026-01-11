@@ -339,16 +339,19 @@ class MarketMaker:
         # ML Regime Override: Use regime-specific params if available
         if self.regime_detector and self.regime_detector.is_fitted:
             try:
-                # Build DataFrame from recent candles for prediction
-                if len(self.candles) >= 50:
-                    regime = self.regime_detector.predict(self.candles.tail(50))
-                    self.current_ml_regime = regime
-                    
+                # Use live Binance data for immediate prediction (bypasses internal candle wait)
+                regime = self.regime_detector.predict_live(symbol="BTCUSDT")
+                self.current_ml_regime = regime
+                
+                if regime != "unknown":
                     ml_params = self.regime_detector.get_params_for_regime(regime)
                     gamma = ml_params['gamma']
                     kappa = ml_params['kappa']
+                    # Save for dashboard display
+                    self._last_gamma = gamma
+                    self._last_kappa = kappa
                     
-                    self.logger.debug(f"ML Regime: {regime} → γ={gamma}, κ={kappa}")
+                    self.logger.info(f"🧠 ML Regime: {regime} → γ={gamma}, κ={kappa}")
             except Exception as e:
                 self.logger.debug(f"ML regime prediction failed: {e}")
         
@@ -789,6 +792,28 @@ class MarketMaker:
             for p, q in sell_orders:
                 await self.exchange.place_limit_order(self.symbol, 'sell', p, q)
         # else: Keep existing orders (no action needed)
+        
+        # Push ML metrics to dashboard
+        if hasattr(self.exchange, 'set_as_metrics'):
+            ml_regime = getattr(self, 'current_ml_regime', 'unknown')
+            adaptive_metrics = {}
+            if self.adaptive_tuner:
+                try:
+                    adaptive_metrics = self.adaptive_tuner.get_display_metrics()
+                except:
+                    pass
+            
+            self.exchange.set_as_metrics({
+                "reservation_price": mid_price,
+                "optimal_spread": final_spread if 'final_spread' in dir() else 0.002,
+                "volatility_sigma": 0.01,
+                "gamma": getattr(self, '_last_gamma', 1.0),
+                "kappa": getattr(self, '_last_kappa', 1000),
+                "ml_regime": ml_regime,
+                "recent_pnl": adaptive_metrics.get('recent_pnl', 0),
+                "win_rate": adaptive_metrics.get('win_rate', 50),
+                "adjustments": adaptive_metrics.get('adjustments', 0)
+            })
         
         # Save status for dashboard (Live mode)
         if hasattr(self.exchange, 'save_live_status'):

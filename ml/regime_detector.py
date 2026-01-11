@@ -189,6 +189,55 @@ class RegimeDetector:
         
         return regime
     
+    def fetch_binance_candles(self, symbol="BTCUSDT", interval="1h", limit=100) -> pd.DataFrame:
+        """
+        Fetch recent candles from Binance API for live prediction.
+        """
+        import requests
+        
+        url = "https://api.binance.com/api/v3/klines"
+        params = {
+            "symbol": symbol,
+            "interval": interval,
+            "limit": limit
+        }
+        
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            df = pd.DataFrame(data, columns=[
+                'timestamp', 'open', 'high', 'low', 'close', 'volume',
+                'close_time', 'quote_volume', 'trades', 'taker_buy_base',
+                'taker_buy_quote', 'ignore'
+            ])
+            
+            # Convert to numeric
+            for col in ['open', 'high', 'low', 'close', 'volume']:
+                df[col] = pd.to_numeric(df[col])
+            
+            return df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
+        except Exception as e:
+            print(f"Failed to fetch Binance data: {e}")
+            return pd.DataFrame()
+    
+    def predict_live(self, symbol="BTCUSDT") -> str:
+        """
+        Predict current regime using live Binance data.
+        This bypasses the need for internal candle accumulation.
+        """
+        if not self.is_fitted:
+            return "unknown"
+        
+        # Fetch 100 recent 1-hour candles
+        df = self.fetch_binance_candles(symbol=symbol, interval="1h", limit=100)
+        
+        if df.empty or len(df) < 50:
+            return "unknown"
+        
+        return self.predict(df)
+    
     def get_params_for_regime(self, regime: str) -> dict:
         """
         Get A&S parameters for the detected regime.

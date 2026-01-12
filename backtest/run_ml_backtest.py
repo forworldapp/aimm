@@ -73,8 +73,8 @@ async def run_ml_backtest(data_file: str, initial_balance: float = 10000.0):
     strategy = MarketMaker(exchange)
     
     # Override loss limit DIRECTLY on strategy for backtest
-    strategy.max_loss_usd = 2000.0
-    strategy.max_drawdown_pct = 0.30  # 30%
+    strategy.max_loss_usd = 3000.0  # Safe limit for 1 year ($3,000)
+    strategy.max_drawdown_pct = 0.30  # 30% drawdown allowed
     
     # MOCK Regime Prediction for Backtest (Avoid Live API)
     def mock_predict_live_proba(symbol="BTCUSDT"):
@@ -116,13 +116,17 @@ async def run_ml_backtest(data_file: str, initial_balance: float = 10000.0):
                 # Ensure columns exist and map correctly
                 strategy.candles = past_data[['open_time', 'open', 'high', 'low', 'close', 'volume']]
             
+            # INJECT PRICES: Update price history for volatility calculation
+            row = df.iloc[exchange.current_index]
+            mid_price = (row['best_bid'] + row['best_ask']) / 2
+            strategy.price_history.append(mid_price)
+            
             await strategy.cycle()
             step += 1
             
             # Track equity every step
             pos = exchange.position
-            row = df.iloc[exchange.current_index]
-            mid_price = (row['best_bid'] + row['best_ask']) / 2
+            # row already defined above
             equity = exchange.balance['USDT'] + (pos['amount'] * mid_price)
             equity_history.append({
                 'step': step,
@@ -195,7 +199,7 @@ async def run_ml_backtest(data_file: str, initial_balance: float = 10000.0):
     }
 
 if __name__ == "__main__":
-    data_file = "data/btc_hourly_3000.csv"
+    data_file = "data/btc_hourly_1year.csv"
     
     if len(sys.argv) > 1:
         data_file = sys.argv[1]

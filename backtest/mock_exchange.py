@@ -34,9 +34,11 @@ class MockExchange(ExchangeInterface):
         best_bid = row['best_bid']
         best_ask = row['best_ask']
         
-        # Relaxed Fill Logic for Backtesting:
-        # If our order is at the best price (or better), assume a fill probability.
-        # In real MM, we are the best bid/ask.
+        
+        # Simulating fills using OHLC High/Low
+        # Since we use 1h candles, if price moved through our order, it's a fill.
+        market_high = row['high']
+        market_low = row['low']
         
         for order_id, order in list(self.orders.items()):
             if order['status'] != 'open': continue
@@ -45,25 +47,17 @@ class MockExchange(ExchangeInterface):
             fill_price = order['price']
             
             if order['side'] == 'buy':
-                # If Market Ask drops to our price (Cross) -> Definite Fill
-                if best_ask <= order['price']:
+                # BUY FILLS:
+                # 1. If Low price dropped below our text order price -> Filled
+                # 2. Assume fill at order price (Limit Order)
+                if market_low <= order['price']:
                     filled = True
-                # If we are at the Best Bid (Touch) -> Probabilistic Fill (e.g. 50%)
-                elif best_bid <= order['price']: 
-                    # Simulating Taker Sell hitting our Bid
-                    import random
-                    if random.random() < 0.5: 
-                        filled = True
                         
             elif order['side'] == 'sell':
-                # If Market Bid rises to our price (Cross) -> Definite Fill
-                if best_bid >= order['price']:
+                # SELL FILLS:
+                # 1. If High price rose above our order price -> Filled
+                if market_high >= order['price']:
                     filled = True
-                # If we are at the Best Ask (Touch) -> Probabilistic Fill
-                elif best_ask >= order['price']:
-                    import random
-                    if random.random() < 0.5:
-                        filled = True
             
             if filled:
                 self._execute_trade(order, fill_price)

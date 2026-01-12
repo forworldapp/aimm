@@ -68,13 +68,13 @@ class RegimeDetector:
         "high_vol": {
             "gamma": 0.3, 
             "kappa": 200, 
-            "skew_factor": 0.002,        # Reduced skew in chaos
-            "price_tolerance": 0.002,    # 0.2% tolerance (wider)
-            "grid_spacing": 0.0020,      # 0.20% grid (wide safety)
-            "order_size_mult": 0.5,      # Half size for risk reduction
-            "grid_layers": 5,            # Fewer layers for safety
-            "max_position_mult": 0.6,    # 60% max position ($3,000)
-            "description": "Very wide spread, conservative - survival mode"
+            "skew_factor": 0.002,        # Low skew
+            "price_tolerance": 0.002,    # 0.2% tolerance
+            "grid_spacing": 0.0020,      # 0.20% grid (Wide Safety)
+            "order_size_mult": 0.7,      # 0.7x (Compromise between 0.5 and 0.8)
+            "grid_layers": 5,            # Fewer layers
+            "max_position_mult": 0.6,    # 60% max position (Safety First)
+            "description": "Wide spread, conservative - survival mode"
         }
     }
     

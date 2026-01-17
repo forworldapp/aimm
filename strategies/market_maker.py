@@ -40,10 +40,12 @@ from strategies.filters import RSIFilter, MAFilter, ADXFilter, ATRFilter, Bollin
 # ML Regime Detection
 try:
     from ml.regime_detector import RegimeDetector
+    from ml.hmm_regime_detector import HMMRegimeDetector
     ML_AVAILABLE = True
 except ImportError:
     ML_AVAILABLE = False
     RegimeDetector = None
+    HMMRegimeDetector = None
 
 # Adaptive Parameter Tuning
 try:
@@ -125,9 +127,20 @@ class MarketMaker:
         self.regime_detector = None
         if self.ml_regime_enabled and ML_AVAILABLE:
             try:
-                self.regime_detector = RegimeDetector()
+                # Model selector: 'gmm' or 'hmm'
+                model_type = Config.get("strategy", "regime_model_type", "gmm")
+                
+                if model_type == "hmm" and HMMRegimeDetector:
+                    model_path = Config.get("strategy", "regime_model_hmm_path", "data/regime_model_hmm.pkl")
+                    self.regime_detector = HMMRegimeDetector(model_path=model_path)
+                    self.logger.info(f"HMM Regime Detector loading from {model_path}")
+                else:
+                    model_path = Config.get("strategy", "regime_model_path", "data/regime_model.pkl")
+                    self.regime_detector = RegimeDetector(model_path=model_path)
+                    self.logger.info(f"GMM Regime Detector loading from {model_path}")
+                
                 if self.regime_detector.is_fitted:
-                    self.logger.info("ML Regime Detector loaded successfully")
+                    self.logger.info(f"ML Regime Detector ({model_type.upper()}) loaded successfully")
                 else:
                     self.logger.warning("ML Regime Detector not fitted, will use static params")
             except Exception as e:

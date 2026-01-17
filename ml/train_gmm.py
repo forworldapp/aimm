@@ -63,15 +63,15 @@ def main():
     print("GMM Regime Detector Training")
     print("=" * 60)
     
-    # Fetch extended data
-    print("\n1. Fetching 3000 hourly candles from Binance...")
-    df = fetch_binance_candles(total=3000)
+    # Fetch extended data (1 year = 24 * 365 = 8760)
+    print("\n1. Fetching 8760 hourly candles (1 year) from Binance...")
+    df = fetch_binance_candles(total=8760)
     print(f"   Total candles: {len(df)}")
     print(f"   Date range: {pd.to_datetime(df['open_time'].min(), unit='ms')} to {pd.to_datetime(df['open_time'].max(), unit='ms')}")
     
     # Save data for reference
-    df.to_csv("data/btc_hourly_3000.csv", index=False)
-    print(f"   Saved to data/btc_hourly_3000.csv")
+    df.to_csv("data/btc_hourly_1year.csv", index=False)
+    print(f"   Saved to data/btc_hourly_1year.csv")
     
     # Train GMM model
     print("\n2. Training GMM model...")

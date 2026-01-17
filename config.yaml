@@ -35,4 +35,7 @@ strategy:
     min_spread: 0.001  # Min 0.1% (low volatility)
     max_spread: 0.01   # Max 1.0% (high volatility)
   ml_regime_enabled: true  # Enable ML-based regime detection
+  regime_model_type: hmm    # 'gmm' or 'hmm'
+  regime_model_path: data/regime_model.pkl      # GMM model path
+  regime_model_hmm_path: data/regime_model_hmm.pkl  # HMM model path
   adaptive_tuning_enabled: true  # Enable online adaptive γ/κ tuning

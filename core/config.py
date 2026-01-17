@@ -54,3 +54,12 @@ class Config:
     @classmethod
     def get(cls, section, key, default=None):
         return cls._config.get(section, {}).get(key, default)
+
+    @classmethod
+    def set(cls, section, key, value):
+        if section not in cls._config:
+            if cls._config is None: cls._config = {}
+            cls._config[section] = {}
+        if cls._config.get(section) is None:
+            cls._config[section] = {}
+        cls._config[section][key] = value

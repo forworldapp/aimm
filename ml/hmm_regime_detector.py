@@ -88,8 +88,8 @@ class HMMRegimeDetector:
     
     def _calculate_features(self, df: pd.DataFrame) -> np.ndarray:
         """
-        Calculate features for regime detection.
-        Same features as GMM for fair comparison.
+        Calculate ENHANCED features for regime detection.
+        Same features as GMM for fair comparison (8 total).
         """
         df = df.copy()
         
@@ -98,13 +98,10 @@ class HMMRegimeDetector:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # Returns (momentum)
+        # === Original Features ===
         df['returns'] = df['close'].pct_change()
-        
-        # Volatility (20-period rolling std)
         df['volatility'] = df['returns'].rolling(20).std()
         
-        # ATR Ratio
         df['tr'] = np.maximum(
             df['high'] - df['low'],
             np.maximum(
@@ -114,15 +111,35 @@ class HMMRegimeDetector:
         )
         df['atr'] = df['tr'].rolling(14).mean()
         df['atr_ratio'] = df['atr'] / df['close']
-        
-        # Momentum (10-period)
         df['momentum'] = df['close'].pct_change(10)
         
-        # Drop NaN rows
+        # === NEW Enhanced Features ===
+        # RSI
+        delta = df['close'].diff()
+        gain = delta.where(delta > 0, 0).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        rs = gain / loss.replace(0, 1e-10)
+        df['rsi'] = (100 - (100 / (1 + rs))) / 100
+        
+        # MACD
+        ema12 = df['close'].ewm(span=12, adjust=False).mean()
+        ema26 = df['close'].ewm(span=26, adjust=False).mean()
+        df['macd'] = (ema12 - ema26) / df['close']
+        
+        # BB Width
+        sma20 = df['close'].rolling(20).mean()
+        std20 = df['close'].rolling(20).std()
+        df['bb_width'] = (2 * std20) / sma20
+        
+        # Volume Spike
+        vol_sma = df['volume'].rolling(20).mean()
+        df['vol_spike'] = df['volume'] / vol_sma.replace(0, 1)
+        df['vol_spike'] = df['vol_spike'].clip(upper=5)
+        
         df = df.dropna()
         
-        # Select features
-        features = df[['returns', 'volatility', 'atr_ratio', 'momentum']].values
+        features = df[['returns', 'volatility', 'atr_ratio', 'momentum',
+                       'rsi', 'macd', 'bb_width', 'vol_spike']].values
         
         return features, df.index
     
@@ -171,11 +188,15 @@ class HMMRegimeDetector:
         Analyze state characteristics to map to regime names.
         Same logic as GMM for consistency.
         """
-        df_analysis = pd.DataFrame(features, columns=['returns', 'volatility', 'atr_ratio', 'momentum'])
+        df_analysis = pd.DataFrame(features, columns=[
+            'returns', 'volatility', 'atr_ratio', 'momentum',
+            'rsi', 'macd', 'bb_width', 'vol_spike'
+        ])
         df_analysis['cluster'] = labels
         
         cluster_stats = df_analysis.groupby('cluster').mean()
         print("\n=== State Analysis ===")
+        print(cluster_stats)
         print(cluster_stats)
         
         vol_order = cluster_stats['volatility'].sort_values()

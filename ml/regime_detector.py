@@ -90,20 +90,26 @@ class RegimeDetector:
     
     def _calculate_features(self, df: pd.DataFrame) -> np.ndarray:
         """
-        Calculate features for regime detection.
+        Calculate ENHANCED features for regime detection.
         
-        Features:
-        - returns: Price momentum
-        - volatility: Rolling std of returns
+        Features (8 total):
+        - returns: Price momentum (1-period)
+        - volatility: Rolling std of returns (20-period)
         - atr_ratio: ATR relative to price
-        - volume_change: Volume momentum
+        - momentum: Price momentum (10-period)
+        - rsi: Relative Strength Index (14-period)
+        - macd: MACD line value
+        - bb_width: Bollinger Band width
+        - vol_spike: Volume spike ratio
         """
         df = df.copy()
         
         # Ensure numeric types
         for col in ['open', 'high', 'low', 'close', 'volume']:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
         
+        # === Original Features ===
         # Returns (momentum)
         df['returns'] = df['close'].pct_change()
         
@@ -121,18 +127,38 @@ class RegimeDetector:
         df['atr'] = df['tr'].rolling(14).mean()
         df['atr_ratio'] = df['atr'] / df['close']
         
-        # Volume change
-        df['volume_sma'] = df['volume'].rolling(20).mean()
-        df['volume_ratio'] = df['volume'] / df['volume_sma']
-        
         # Momentum (10-period)
         df['momentum'] = df['close'].pct_change(10)
+        
+        # === NEW Enhanced Features ===
+        # RSI (Relative Strength Index)
+        delta = df['close'].diff()
+        gain = delta.where(delta > 0, 0).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        rs = gain / loss.replace(0, 1e-10)  # Avoid division by zero
+        df['rsi'] = (100 - (100 / (1 + rs))) / 100  # Normalize to 0-1
+        
+        # MACD (Moving Average Convergence Divergence)
+        ema12 = df['close'].ewm(span=12, adjust=False).mean()
+        ema26 = df['close'].ewm(span=26, adjust=False).mean()
+        df['macd'] = (ema12 - ema26) / df['close']  # Normalize by price
+        
+        # Bollinger Band Width
+        sma20 = df['close'].rolling(20).mean()
+        std20 = df['close'].rolling(20).std()
+        df['bb_width'] = (2 * std20) / sma20
+        
+        # Volume Spike Ratio
+        vol_sma = df['volume'].rolling(20).mean()
+        df['vol_spike'] = df['volume'] / vol_sma.replace(0, 1)
+        df['vol_spike'] = df['vol_spike'].clip(upper=5)  # Cap at 5x to avoid outliers
         
         # Drop NaN rows
         df = df.dropna()
         
-        # Select features
-        features = df[['returns', 'volatility', 'atr_ratio', 'momentum']].values
+        # Select ALL 8 features
+        features = df[['returns', 'volatility', 'atr_ratio', 'momentum',
+                       'rsi', 'macd', 'bb_width', 'vol_spike']].values
         
         return features, df.index
     
@@ -170,7 +196,10 @@ class RegimeDetector:
         """
         Analyze cluster characteristics to map to regime names.
         """
-        df_analysis = pd.DataFrame(features, columns=['returns', 'volatility', 'atr_ratio', 'momentum'])
+        df_analysis = pd.DataFrame(features, columns=[
+            'returns', 'volatility', 'atr_ratio', 'momentum',
+            'rsi', 'macd', 'bb_width', 'vol_spike'
+        ])
         df_analysis['cluster'] = labels
         
         cluster_stats = df_analysis.groupby('cluster').mean()

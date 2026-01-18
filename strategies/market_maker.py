@@ -55,6 +55,22 @@ except ImportError:
     ADAPTIVE_AVAILABLE = False
     AdaptiveParameterTuner = None
 
+# Dynamic Order Sizing (Phase 1.1)
+try:
+    from ml.dynamic_order_sizer import DynamicOrderSizer
+    DYNAMIC_SIZER_AVAILABLE = True
+except ImportError:
+    DYNAMIC_SIZER_AVAILABLE = False
+    DynamicOrderSizer = None
+
+# Adverse Selection Detection (Phase 1.2)
+try:
+    from ml.adverse_selection import AdverseSelectionDetector
+    ADVERSE_SELECTION_AVAILABLE = True
+except ImportError:
+    ADVERSE_SELECTION_AVAILABLE = False
+    AdverseSelectionDetector = None
+
 
 def round_tick_size(price, tick_size):
     return round(price / tick_size) * tick_size
@@ -157,6 +173,34 @@ class MarketMaker:
                 self.logger.info("Adaptive Parameter Tuner loaded successfully")
             except Exception as e:
                 self.logger.warning(f"Failed to load Adaptive Tuner: {e}")
+
+        # Dynamic Order Sizer (Phase 1.1)
+        self.dynamic_sizer = None
+        self.dynamic_sizing_enabled = Config.get("strategy", "dynamic_sizing_enabled", True)
+        if self.dynamic_sizing_enabled and DYNAMIC_SIZER_AVAILABLE:
+            try:
+                self.dynamic_sizer = DynamicOrderSizer(
+                    base_size=self.order_size_usd,
+                    max_inventory=self.max_position_usd
+                )
+                self.logger.info(f"Dynamic Order Sizer loaded (base=${self.order_size_usd}, max_inv=${self.max_position_usd})")
+            except Exception as e:
+                self.logger.warning(f"Failed to load Dynamic Order Sizer: {e}")
+
+        # Adverse Selection Detector (Phase 1.2)
+        self.as_detector = None
+        self.as_detection_enabled = Config.get("strategy", "as_detection_enabled", True)
+        if self.as_detection_enabled and ADVERSE_SELECTION_AVAILABLE:
+            try:
+                self.as_detector = AdverseSelectionDetector()
+                self.logger.info("Adverse Selection Detector loaded")
+            except Exception as e:
+                self.logger.warning(f"Failed to load AS Detector: {e}")
+        
+        # AS adjustment tracking
+        self.as_spread_add_bps = 0
+        self.as_size_mult = 1.0
+        self.as_pause_until = 0
 
     def _initialize_filter(self, name):
         name = str(name).lower()
@@ -655,6 +699,11 @@ class MarketMaker:
         # Determine Spread using A&S formula (or legacy)
         final_spread = self._calculate_dynamic_spread()
         
+        # === Adverse Selection Adjustment (Phase 1.2) ===
+        if self.as_detector and self.as_spread_add_bps > 0:
+            # Add AS-detected spread increase
+            final_spread += self.as_spread_add_bps / 10000  # bps to fraction
+        
         # --- A&S Reservation Price ---
         # Replace simple skew with Avellaneda-Stoikov reservation price
         # This provides more sophisticated inventory-based price adjustment
@@ -752,21 +801,47 @@ class MarketMaker:
             bid_p = round_tick_size(target_bid * (1 - (layer_spacing * i)), self.tick_size)
             ask_p = round_tick_size(target_ask * (1 + (layer_spacing * i)), self.tick_size)
             
-            # Amount distribution (USD Based) - Apply ML size multiplier
-            if self.order_size_usd > 0:
-                adjusted_size_usd = self.order_size_usd * ml_size_mult
-                raw_qty = adjusted_size_usd / mid_price
-                # Round to 3 decimals for GRVT (0.001 lot size)
-                qty = round(raw_qty, 3)
-                # Enforce min qty (0.001 BTC for GRVT)
-                qty = max(qty, 0.001)
+            # === Dynamic Order Sizing (Phase 1.1) ===
+            if self.dynamic_sizer and self.order_size_usd > 0:
+                # Get volatility for sizing
+                volatility = self._calculate_volatility_sigma() if hasattr(self, '_calculate_volatility_sigma') else 0.01
+                # Get order book depth (simplified - use default 10)
+                book_depth = 10.0
+                
+                # Calculate asymmetric bid/ask sizes
+                bid_size_usd, ask_size_usd = self.dynamic_sizer.calculate(
+                    inventory=current_pos_qty * mid_price,  # Convert to USD
+                    volatility=volatility,
+                    book_depth=book_depth
+                )
+                
+                # Apply ML size multiplier
+                bid_size_usd *= ml_size_mult
+                ask_size_usd *= ml_size_mult
+                
+                # Convert to quantity
+                bid_qty = round(bid_size_usd / mid_price, 3)
+                ask_qty = round(ask_size_usd / mid_price, 3)
+                
+                # Enforce minimums
+                bid_qty = max(bid_qty, 0.001)
+                ask_qty = max(ask_qty, 0.001)
             else:
-                qty = self.amount # Old fixed quantity fallback
+                # Fallback: Fixed order size
+                if self.order_size_usd > 0:
+                    adjusted_size_usd = self.order_size_usd * ml_size_mult
+                    raw_qty = adjusted_size_usd / mid_price
+                    qty = round(raw_qty, 3)
+                    qty = max(qty, 0.001)
+                else:
+                    qty = self.amount
+                bid_qty = qty
+                ask_qty = qty
             
             if allow_buy:
-                buy_orders.append((bid_p, qty))
+                buy_orders.append((bid_p, bid_qty))
             if allow_sell:
-                sell_orders.append((ask_p, qty))
+                sell_orders.append((ask_p, ask_qty))
         
         # --- 5.1 Signal Boost: Add aggressive orders when signal detected ---
         # This adds EXTRA orders close to market price in signal direction
@@ -774,13 +849,13 @@ class MarketMaker:
             # Add 2 extra aggressive buy orders very close to mid price
             for i in range(2):
                 aggressive_price = round_tick_size(mid_price * (1 - 0.0005 * (i + 1)), self.tick_size)  # 0.05%, 0.1% below mid
-                buy_orders.append((aggressive_price, qty))
+                buy_orders.append((aggressive_price, bid_qty))
             self.logger.info(f"📈 SIGNAL BOOST: +2 aggressive BUY orders near ${mid_price:.0f}")
         elif 'sell_signal' in effective_regime and allow_sell:
             # Add 2 extra aggressive sell orders very close to mid price
             for i in range(2):
                 aggressive_price = round_tick_size(mid_price * (1 + 0.0005 * (i + 1)), self.tick_size)  # 0.05%, 0.1% above mid
-                sell_orders.append((aggressive_price, qty))
+                sell_orders.append((aggressive_price, ask_qty))
             self.logger.info(f"📉 SIGNAL BOOST: +2 aggressive SELL orders near ${mid_price:.0f}")
             
         # --- 6. Smart Order Management (v1.9.1) ---

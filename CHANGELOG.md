@@ -1,5 +1,36 @@
 # Changelog
 
+## [v3.8.0] - 2026-01-18
+### Fixed
+- **MockExchange Overflow Bug (CRITICAL)**: Fixed numeric overflow causing $7.7 quadrillion loss display
+- **Circuit Breaker Infinite Loop**: Fixed strategy.stopped flag not being honored
+- **Position Limits**: Added 1 BTC max position to prevent overflow
+- **Order Limits**: Added 100 max open orders safety limit
+
+### Added
+- **`get_equity()` Method**: MockExchange now properly calculates USDT + BTC value
+- **`get_current_price()` Method**: Convenience method for current mid price
+- **Multi-Period Comparison Script** (`backtest/run_multi_period_comparison.py`):
+  - Luna Collapse (May 2022) - High volatility test
+  - October 2025 - Medium volatility test  
+  - Recent Month - Low volatility test
+- **Overflow Clamping**: All equity calculations clamped to reasonable ranges
+
+### Backtest Results (3 Periods)
+| Period | PnL | Return | Trades | MaxDD | Volatility |
+|--------|-----|--------|--------|-------|------------|
+| Luna Collapse | +$170 | +1.7% | 167 | 0.8% | 0.118% |
+| October 2025 | +$173 | +1.7% | 309 | 1.5% | 0.068% |
+| Recent Month | -$37 | -0.4% | 312 | 2.1% | 0.051% |
+| **TOTAL** | **+$306** | **+3.1%** | 788 | 1.5% avg | - |
+
+### ML Components Complete (Phase 1-5)
+- Phase 1: Dynamic Order Sizing, Adverse Selection Detection
+- Phase 2: GMM/HMM Regime Detection (8 features)
+- Phase 3: Fill Probability, Funding Prediction, Liquidation Detection
+- Phase 4: Contextual Bandit Spread, Online Learning
+- Phase 5: IntegratedMarketMaker, Monitoring Dashboard, Alert System
+
 ## [v1.3.0] - 2025-12-16
 ### Added
 - **Advanced Trend Filters (`strategies/filters.py`)**:

@@ -493,6 +493,40 @@ class MarketMaker:
             self.logger.warning(f"A&S spread calc error: {e}, using base spread")
             optimal_spread = self.base_spread
         
+        # Phase 7: Hybrid Volatility Strategy v3.10.0
+        vol_adapt_conf = Config.get("strategy", "volatility_adaptation", {})
+        if vol_adapt_conf.get('enabled', False) and vol_adapt_conf.get('mode') == 'hybrid':
+            thresholds = vol_adapt_conf.get('thresholds', {})
+            low_thresh = float(thresholds.get('low', 0.0005))
+            med_thresh = float(thresholds.get('medium', 0.0008))
+            
+            # Determine volatility regime based on sigma
+            if sigma < low_thresh:
+                vol_regime = 'low'
+                mode_conf = vol_adapt_conf.get('low_vol_mode', {})
+            else:
+                vol_regime = 'high' if sigma >= med_thresh else 'medium'
+                mode_conf = vol_adapt_conf.get('high_vol_mode', {})
+            
+            # Get mode-specific parameters
+            spread_mult = float(mode_conf.get('spread_multiplier', 1.0))
+            
+            # Apply multiplier
+            adjusted_spread = optimal_spread * spread_mult
+            
+            # Ensure still within bounds
+            adjusted_spread = max(min_spread, min(max_spread, adjusted_spread))
+            
+            # Store for dashboard/logging and cycle() skip logic
+            self._vol_regime = vol_regime
+            self._vol_spread_mult = spread_mult
+            self._vol_skip_prob = float(mode_conf.get('quote_skip_prob', 0.0))
+            
+            if vol_regime == 'low':
+                self.logger.debug(f"📉 Hybrid LOW: σ={sigma:.4f}, spread×{spread_mult:.1f}, skip={self._vol_skip_prob:.0%}")
+            
+            return adjusted_spread
+        
         return optimal_spread
     
     def _calculate_volatility_sigma(self) -> float:
@@ -625,6 +659,19 @@ class MarketMaker:
         
         if not orderbook or 'bids' not in orderbook:
             return
+        
+        # Phase 7 v3.10.0: Hybrid Quote Skip
+        # Use _vol_skip_prob set by _calculate_dynamic_spread()
+        vol_adapt_conf = Config.get("strategy", "volatility_adaptation", {})
+        if vol_adapt_conf.get('enabled', False) and vol_adapt_conf.get('mode') == 'hybrid':
+            import random
+            skip_prob = getattr(self, '_vol_skip_prob', 0.0)
+            vol_regime = getattr(self, '_vol_regime', 'high')
+            
+            if random.random() < skip_prob:
+                # Skip this cycle - don't place new quotes
+                self.logger.debug(f"📉 Hybrid Skip: {vol_regime} vol, skipping cycle (p={skip_prob:.0%})")
+                return
 
         try:
             bids = orderbook['bids']

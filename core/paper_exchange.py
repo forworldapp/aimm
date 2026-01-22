@@ -33,11 +33,13 @@ class PaperGrvtExchange(GrvtExchange):
         self.private_key = "dummy"
         self.env = "paper"
         
-        # Initialize Real GRVT Exchange for Data
+        # Initialize Data Source for Paper Trading: Use Binance directly (no GRVT SDK needed)
         Config.load()
-        # We access the internal ccxt wrapper directly
-        real_exchange = GrvtExchange(Config.get("exchange", "env", "prod"))
-        self.exchange = real_exchange.exchange
+        # Use Binance for reliable paper trading data feed
+        self.exchange = ccxt.binance({
+            'enableRateLimit': True,
+            'options': {'defaultType': 'future'}  # Use Binance Futures for perpetual data
+        })
         
         # Paper Trading State
         self.paper_balance = {'USDT': 10000.0}
@@ -139,11 +141,13 @@ class PaperGrvtExchange(GrvtExchange):
     async def _check_paper_fills(self):
         # Get Real Market Data
         symbol = Config.get("exchange", "symbol", "BTC_USDT_Perp")
+        # Convert GRVT symbol to Binance format: BTC_USDT_Perp -> BTC/USDT:USDT
+        binance_symbol = symbol.replace("_USDT_Perp", "/USDT:USDT").replace("_", "/")
         try:
             # SDK fetch_order_book limit usually supports 10, 20...
-            orderbook = self.exchange.fetch_order_book(symbol, limit=10)
+            orderbook = await self.exchange.fetch_order_book(binance_symbol, limit=10)
         except Exception as e:
-            # self.logger.error(f"Error fetching orderbook: {e}")
+            self.logger.debug(f"Orderbook fetch error: {e}")
             return # Skip this tick
             
         if not orderbook or 'bids' not in orderbook or 'asks' not in orderbook:
@@ -455,12 +459,12 @@ class PaperGrvtExchange(GrvtExchange):
     # --- Overridden Methods for Bot Interaction ---
 
     async def get_orderbook(self, symbol: str) -> Dict:
-        # Re-implement wrapper to call sync SDK method asynchronously if needed, or just call directly
-        # Since we use self.exchange (GrvtCcxt) directly in _check_paper_fills, this is for the bot strategy
+        # Convert GRVT symbol to Binance format
+        binance_symbol = symbol.replace("_USDT_Perp", "/USDT:USDT").replace("_", "/")
         try:
-            # SDK fetch_order_book is sync
-            return self.exchange.fetch_order_book(symbol, limit=10)
-        except:
+            return await self.exchange.fetch_order_book(binance_symbol, limit=10)
+        except Exception as e:
+            self.logger.debug(f"Orderbook fetch error: {e}")
             return {}
 
     async def place_limit_order(self, symbol: str, side: str, price: float, quantity: float) -> str:

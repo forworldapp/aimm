@@ -294,10 +294,11 @@ class MarketMaker:
 
     def _detect_market_regime(self):
         """Use the selected Filter Strategy to detect regime and append RSI status."""
+        # Allow grid trading even when filter/ML not ready - default to neutral
         if not self.filter_strategy:
             if hasattr(self.exchange, "set_market_regime"):
-                self.exchange.set_market_regime('OFF')
-            return 'ranging'
+                self.exchange.set_market_regime('NEUTRAL (Grid)')
+            return 'neutral'  # Changed from 'ranging' to 'neutral' to allow trading
             
         if self.current_candle:
             df = pd.concat([self.candles, pd.DataFrame([self.current_candle])], ignore_index=True)
@@ -347,10 +348,11 @@ class MarketMaker:
         regime = self._detect_market_regime()
         
         if regime == 'waiting':
-             return 0.0 
+             # Treat waiting as neutral - allow grid trading while ML initializes
+             regime = 'neutral'
              
         if regime == 'ranging':
-            return 0.0 
+            regime = 'neutral'  # Ranging is effectively neutral for grid MM 
         
         if len(self.price_history) < 20: return 0.0
         short_ma = statistics.mean(self.price_history[-10:])

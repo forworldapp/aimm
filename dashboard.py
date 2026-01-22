@@ -378,9 +378,9 @@ if as_metrics and as_metrics.get('reservation_price', 0) > 0:
 # ============================================================
 
 # ============================================================
-# MODULAR COMPONENT: ML Learning Metrics (GMM Enhanced)
+# MODULAR COMPONENT: ML Learning Metrics (HMM v3.8.0)
 # ============================================================
-st.markdown("### 🧠 Machine Learning Status (GMM)")
+st.markdown("### 🧠 Machine Learning Status (HMM v3.8.0)")
 col_ml1, col_ml2, col_ml3, col_ml4 = st.columns(4)
 
 as_metrics = status.get('as_metrics', {})
@@ -413,11 +413,11 @@ with col_ml4:
     else:
         st.metric("🎯 승률 / 조정", "대기중...")
 
-# GMM Extended Parameters Row
+# HMM/GMM Extended Parameters Row
 col_gmm1, col_gmm2, col_gmm3, col_gmm4 = st.columns(4)
 
 with col_gmm1:
-    st.metric("🔬 모델", "GMM (v3.0)")
+    st.metric("🔬 모델", "HMM (v3.8.0)")
     
 with col_gmm2:
     # Grid Layers from ML regime
@@ -441,7 +441,7 @@ with col_gmm4:
     st.metric("💰 포지션 한도", pos_mult)
 
 # ============================================================
-# END: ML Learning Metrics (GMM Enhanced)
+# END: ML Learning Metrics (HMM v3.8.0)
 # ============================================================
 
 # --- Charts Section ---

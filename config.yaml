@@ -5,7 +5,7 @@ exchange:
 risk:
   inventory_skew_factor: 0.005
   max_drawdown_pct: 0.05
-  max_loss_usd: 50.0
+  max_loss_usd: 350.0      # Circuit breaker: Based on 12-month analysis (max $327)
   max_position_usd: 5000.0
 strategy:
   bollinger:
@@ -43,8 +43,8 @@ strategy:
   # Hybrid Volatility Strategy v3.10.0
   # Based on 1-year analysis: LOW=64.8%, MED=22.1%, HIGH=13.1%
   volatility_adaptation:
-    enabled: true
-    mode: hybrid  # NEW: 'hybrid' combines both strategies
+    enabled: false  # v3.8.0 baseline (backtest winner: +$8,460 vs +$8,083)
+    mode: hybrid  # Available but disabled
     
     # Volatility regime thresholds (1-minute returns std)
     thresholds:

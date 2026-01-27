@@ -6,6 +6,7 @@ import yaml
 import json
 import plotly.express as px
 import datetime
+from streamlit_autorefresh import st_autorefresh
 
 # --- Page Config ---
 st.set_page_config(
@@ -47,7 +48,7 @@ st.sidebar.header("Configuration")
 # (Rest of Sidebar)
 
 # Refresh Control
-refresh_interval = st.sidebar.slider("Refresh Interval (sec)", 1, 60, 2)
+refresh_interval = st.sidebar.slider("Refresh Interval (sec)", 1, 60, 5)
 auto_refresh = st.sidebar.checkbox("Auto Refresh", value=True)
 
 CONFIG_PATH = "config.yaml"
@@ -607,15 +608,6 @@ if status:
     except:
         st.caption(f"Last Bot Update: {ts}")
 
-# Use JavaScript-based auto-refresh instead of st.rerun() to prevent double rendering
+# Use streamlit-autorefresh for reliable updates
 if auto_refresh:
-    st.markdown(
-        f"""
-        <script>
-            setTimeout(function() {{
-                window.location.reload();
-            }}, {refresh_interval * 1000});
-        </script>
-        """,
-        unsafe_allow_html=True
-    )
+    st_autorefresh(interval=refresh_interval * 1000, key="data_refresh")

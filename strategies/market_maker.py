@@ -830,6 +830,9 @@ class MarketMaker:
             elif current_pos_qty < 0:
                 allow_sell = False  # Short position at limit → block selling
                 self.logger.debug(f"Max position reached: ${position_usd:.0f} >= ${effective_max_position:.0f}, blocking SELL")
+        
+        # DEBUG: Log Allow Status
+        self.logger.info(f"DEBUG: AllowBuy={allow_buy} AllowSell={allow_sell} Pos=${position_usd:.0f}/{(effective_max_position):.0f} (x{ml_max_pos_mult})")
                 
         # --- 5. Generate Grid Orders ---
         buy_orders = []

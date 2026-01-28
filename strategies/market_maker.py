@@ -793,6 +793,19 @@ class MarketMaker:
                     ml_bid_offset = adj['bid_layers']
                     ml_ask_offset = adj['ask_layers']
                     
+                    # Store for Dashboard
+                    self.last_ml_metrics = {
+                        'vol_value': self.strategy_v4.predict_volatility(last_row),
+                        'confidence': 0.0,
+                        'spread_mult': ml_spread_mult,
+                        'size_mult': ml_size_mult,
+                        'direction': adj.get('direction'),
+                        'vol_regime': adj.get('vol_regime')
+                    }
+                    if adj.get('direction'):
+                        _, conf = self.strategy_v4.predict_direction(last_row)
+                        self.last_ml_metrics['confidence'] = conf
+                    
                     # Update regime string for dashboard
                     self.current_ml_regime = f"v4:{adj['vol_regime']}"
                     if adj.get('direction'):
@@ -804,6 +817,19 @@ class MarketMaker:
 
             except Exception as e:
                 self.logger.error(f"v4 ML Error: {e}")
+                self.last_ml_metrics = {}
+        elif self.strategy_v4:
+            # Report initialization progress
+            self.last_ml_metrics = {
+                'vol_value': 0,
+                'confidence': 0,
+                'spread_mult': 1.0,
+                'size_mult': 1.0,
+                'direction': None,
+                'vol_regime': f'init ({len(self.candles)}/60)'
+            }
+            # Also update regime string to show init
+            self.current_ml_regime = f"v4:init({len(self.candles)}/60)"
 
         # 2. Calculate Parameters
         # Fix Division by Zero: Use calculated qty based on price
@@ -1094,6 +1120,8 @@ class MarketMaker:
                 except:
                     pass
             
+            ml_metrics = getattr(self, 'last_ml_metrics', {})
+            
             self.exchange.set_as_metrics({
                 "reservation_price": mid_price,
                 "optimal_spread": final_spread if 'final_spread' in dir() else 0.002,
@@ -1103,7 +1131,14 @@ class MarketMaker:
                 "ml_regime": ml_regime,
                 "recent_pnl": adaptive_metrics.get('recent_pnl', 0),
                 "win_rate": adaptive_metrics.get('win_rate', 50),
-                "adjustments": adaptive_metrics.get('adjustments', 0)
+                "adjustments": adaptive_metrics.get('adjustments', 0),
+                # v4 Metrics
+                "ml_vol_value": ml_metrics.get('vol_value', 0),
+                "ml_confidence": ml_metrics.get('confidence', 0),
+                "ml_spread_mult": ml_metrics.get('spread_mult', 1.0),
+                "ml_size_mult": ml_metrics.get('size_mult', 1.0),
+                "ml_direction": ml_metrics.get('direction'),
+                "ml_vol_regime": ml_metrics.get('vol_regime')
             })
         
         # Save status for dashboard (Live mode)
@@ -1119,8 +1154,8 @@ class MarketMaker:
                 equity=status.get('total_equity', 0.0)
             )
             # Also fetch and save trade history for dashboard
-            if hasattr(self.exchange, 'fetch_and_save_trades'):
-                self.exchange.fetch_and_save_trades(self.symbol)
+            # if hasattr(self.exchange, 'fetch_and_save_trades'):
+            #     self.exchange.fetch_and_save_trades(self.symbol)
 
     async def run(self):
         self.logger.info("Strategy Started")

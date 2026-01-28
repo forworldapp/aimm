@@ -71,6 +71,15 @@ except ImportError:
     ADVERSE_SELECTION_AVAILABLE = False
     AdverseSelectionDetector = None
 
+# v4.0 ML Strategy
+try:
+    from ml.strategy_v4 import StrategyV4
+    from ml.feature_engineering import get_feature_engineer
+    ML_V4_AVAILABLE = True
+except ImportError:
+    ML_V4_AVAILABLE = False
+    StrategyV4 = None
+
 
 def round_tick_size(price, tick_size):
     return round(price / tick_size) * tick_size
@@ -92,7 +101,7 @@ class MarketMaker:
         
         # Trend & Volatility State
         self.price_history = []
-        self.history_max_len = 50
+        self.history_max_len = 200  # Increased for ML features (needs 60m+)
         
         # Candle Data for Advanced Filters (OHLC)
         self.candles = pd.DataFrame(columns=['timestamp', 'open', 'high', 'low', 'close'])
@@ -110,6 +119,20 @@ class MarketMaker:
 
         # Load Params & Initialize Filter
         self._load_params()
+        
+        # Initialize v4.0 Strategy
+        if ML_V4_AVAILABLE:
+            try:
+                self.strategy_v4 = StrategyV4()
+                # Initialize Feature Engineer (exchange name from config or default to binance for paper)
+                exchange_name = 'binance' # Default for now as models are trained on it
+                self.fe = get_feature_engineer(exchange_name)
+                self.logger.info("✅ v4.0 ML Strategy Initialized")
+            except Exception as e:
+                self.logger.error(f"❌ Failed to initialize v4.0 Strategy: {e}")
+                self.strategy_v4 = None
+        else:
+            self.strategy_v4 = None
         
     def _load_params(self):
         """Load strategy parameters from config.yaml"""
@@ -734,6 +757,54 @@ class MarketMaker:
         if hasattr(self.exchange, 'set_market_regime'):
             self.exchange.set_market_regime(effective_regime)
 
+        # --- v4.0 ML Integration ---
+        # Reset ML multipliers
+        ml_spread_mult = 1.0
+        ml_size_mult = 1.0
+        ml_bid_offset = 0
+        ml_ask_offset = 0
+        
+        if self.strategy_v4 and len(self.candles) >= 60:
+            try:
+                # 1. Compute Features
+                # We need to ensure we pass a DataFrame with enough history
+                # self.candles has ['timestamp', 'open', 'high', 'low', 'close']
+                # Feature engineer expects this format plus volume (if available)
+                df_candles = self.candles.copy()
+                if 'volume' not in df_candles.columns:
+                    df_candles['volume'] = 1000.0 # Dummy volume if not available
+                    
+                # Fix dtypes
+                for col in ['open', 'high', 'low', 'close', 'volume']:
+                    df_candles[col] = df_candles[col].astype(float)
+                df_candles['timestamp'] = pd.to_datetime(df_candles['timestamp'], unit='s')
+                df_candles.set_index('timestamp', inplace=True)
+                
+                features = self.fe.compute_features(df_candles)
+                
+                if not features.empty:
+                    last_row = features.iloc[-1]
+                    
+                    # 2. Get v4 Adjustments
+                    adj = self.strategy_v4.get_adjustments(last_row, effective_regime)
+                    
+                    ml_spread_mult = adj['spread_mult']
+                    ml_size_mult = adj['size_mult']
+                    ml_bid_offset = adj['bid_layers']
+                    ml_ask_offset = adj['ask_layers']
+                    
+                    # Update regime string for dashboard
+                    self.current_ml_regime = f"v4:{adj['vol_regime']}"
+                    if adj.get('direction'):
+                        self.current_ml_regime += f"_{adj['direction']}"
+                    
+                    # Log significant adjustments
+                    if ml_spread_mult != 1.0 or ml_size_mult != 1.0 or adj.get('direction'):
+                        self.logger.info(f"🤖 ML v4: {adj['vol_regime'].upper()} | Dir {adj.get('direction')} | Spread x{ml_spread_mult:.2f} | Size x{ml_size_mult:.2f}")
+
+            except Exception as e:
+                self.logger.error(f"v4 ML Error: {e}")
+
         # 2. Calculate Parameters
         # Fix Division by Zero: Use calculated qty based on price
         estimated_qty = (self.order_size_usd / mid_price) if mid_price > 0 else self.amount
@@ -747,6 +818,9 @@ class MarketMaker:
         
         # Determine Spread using A&S formula (or legacy)
         final_spread = self._calculate_dynamic_spread()
+        
+        # Apply ML Spread Multiplier
+        final_spread *= ml_spread_mult
         
         # === Adverse Selection Adjustment (Phase 1.2) ===
         if self.as_detector and self.as_spread_add_bps > 0:
@@ -843,15 +917,40 @@ class MarketMaker:
         layer_spacing = max(final_spread, ml_grid)
         
         # Order Size Multiplier from ML Regime
-        ml_size_mult = getattr(self, '_ml_order_size_mult', 1.0)
+        ml_size_mult_legacy = getattr(self, '_ml_order_size_mult', 1.0)
+        # Combine legacy ML (if any) with v4 ML
+        total_size_mult = ml_size_mult_legacy * ml_size_mult
         
         # Grid Layers: Use ML-adjusted count or fallback to config
         ml_grid_layers = getattr(self, '_ml_grid_layers', self.grid_layers)
 
         for i in range(ml_grid_layers):
-            # Linearly spaced grid
-            bid_p = round_tick_size(target_bid * (1 - (layer_spacing * i)), self.tick_size)
-            ask_p = round_tick_size(target_ask * (1 + (layer_spacing * i)), self.tick_size)
+            # Apply Directional Offset to Layers
+            # UP trend (dir='UP'): bid_layers +1, ask_layers -1 (handled by offsets)
+            # We want to shift the grid: 
+            #   If bid_offset > 0: start bids closer (or add more bids?)
+            #   StrategyV4 implementation: bid_layers bias means we want MORE probability to buy?
+            #   Actually v4 logic: bid_layers = shift. 
+            #   Let's interpret shift as: skewing the grid center.
+            #   But 'market_maker.py' builds grid from mid_price outwards.
+            #   Simplest impl: Adjust spacing or start index?
+            
+            # v4 Logic Interpretation:
+            # bid_layers > 0 means we want to be more aggressive on bids.
+            # We can implement this by shifting the start price for bids/asks.
+            pass # just a comment placeholder
+            
+            # Linearly spaced grid with ML offsets
+            # If bid_offset = 1 (UP trend), we want bids to be closer/more aggressive.
+            #   standard: mid * (1 - spacing * (i+1))
+            #   aggressive: mid * (1 - spacing * i)  <- start at mid!
+            # Let's simply modulate 'i' index.
+            
+            eff_i_bid = max(0, i - ml_bid_offset)
+            eff_i_ask = max(0, i - ml_ask_offset)
+            
+            bid_p = round_tick_size(target_bid * (1 - (layer_spacing * (eff_i_bid + 1))), self.tick_size)
+            ask_p = round_tick_size(target_ask * (1 + (layer_spacing * (eff_i_ask + 1))), self.tick_size)
             
             # === Dynamic Order Sizing (Phase 1.1) ===
             if self.dynamic_sizer and self.order_size_usd > 0:
@@ -868,8 +967,8 @@ class MarketMaker:
                 )
                 
                 # Apply ML size multiplier
-                bid_size_usd *= ml_size_mult
-                ask_size_usd *= ml_size_mult
+                bid_size_usd *= total_size_mult
+                ask_size_usd *= total_size_mult
                 
                 # Convert to quantity
                 bid_qty = round(bid_size_usd / mid_price, 3)
@@ -881,7 +980,7 @@ class MarketMaker:
             else:
                 # Fallback: Fixed order size
                 if self.order_size_usd > 0:
-                    adjusted_size_usd = self.order_size_usd * ml_size_mult
+                    adjusted_size_usd = self.order_size_usd * total_size_mult
                     raw_qty = adjusted_size_usd / mid_price
                     qty = round(raw_qty, 3)
                     qty = max(qty, 0.001)

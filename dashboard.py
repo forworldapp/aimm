@@ -23,7 +23,7 @@ st.session_state.render_key += 1
 # --- Title ---
 # Dashboard for GRVT Market Maker Bot
 # Visualizes Real-time Status and Performance - Force Reload
-st.title("🚀 GRVT Market Maker Bot")
+st.title("🚀 GRVT Market Maker Bot v4.0")
 
 # --- Utils ---
 def load_yaml_config():
@@ -355,12 +355,52 @@ if as_metrics and as_metrics.get('reservation_price', 0) > 0:
     with col_as5:
         ml_regime = as_metrics.get('ml_regime', 'disabled')
         regime_colors = {
-            'low_vol': '🟢', 'trend_up': '🔵', 
-            'trend_down': '🔴', 'high_vol': '🟠',
-            'unknown': '⚪', 'disabled': '⚫'
+            'low_vol': '🟢', 'trend_up': '🔵', 'trend_down': '🔴', 
+            'high_vol': '🟠', 'v4:high': '🟠', 'v4:low': '🟢', 
+            'v4:normal': '⚪', 'unknown': '⚪', 'disabled': '⚫'
         }
-        emoji = regime_colors.get(ml_regime, '⚪')
+        # Parse simple regime from complex string (e.g. v4:high_UP)
+        base_regime = ml_regime.split(':')[1] if ':' in ml_regime else ml_regime
+        base_regime = base_regime.split('_')[0]
+        # Match base regime or full regime
+        emoji = '⚪'
+        if ml_regime in regime_colors: emoji = regime_colors[ml_regime]
+        elif f"v4:{base_regime}" in regime_colors: emoji = regime_colors[f"v4:{base_regime}"]
+        
         st.metric("🤖 ML 레짐", f"{emoji} {ml_regime}")
+
+    # --- v4.0 ML Metrics ---
+    # Show if we have specific v4 metrics OR if we are in initialization
+    ml_vol_regime = as_metrics.get('ml_vol_regime', '')
+    if ('ml_vol_value' in as_metrics and float(as_metrics.get('ml_vol_value', 0)) > 0) or 'init' in ml_vol_regime:
+        st.divider()
+        st.markdown("#### 🧠 v4.0 ML Insights")
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            vol_val = float(as_metrics.get('ml_vol_value', 0))
+            vol_regime = as_metrics.get('ml_vol_regime', 'normal')
+            if 'init' in vol_regime:
+                 color = "orange"
+                 st.markdown(f"**상태**: :{color}[⚠️ 초기화 중 {vol_regime}]")
+            else:
+                 color = "red" if vol_val > 0.4 else "green" if vol_val < 0.25 else "gray"
+                 st.markdown(f"**변동성 예측**: :{color}[{vol_val:.3f}% ({vol_regime})]")
+        with c2:
+            direction = as_metrics.get('ml_direction')
+            conf = float(as_metrics.get('ml_confidence', 0))
+            if direction:
+                icon = "⬆️" if direction == 'UP' else "⬇️"
+                st.metric("방향 예측", f"{icon} {direction}", f"{conf*100:.1f}% Conf")
+            else:
+                st.metric("방향 예측", "NEUTRAL", "대기 중..." if 'init' in ml_vol_regime else "Low Conf")
+        with c3:
+            s_mult = float(as_metrics.get('ml_spread_mult', 1.0))
+            delta = (s_mult - 1.0) * 100
+            st.metric("Spread Adj", f"x{s_mult:.2f}", f"{delta:+.0f}%")
+        with c4:
+            z_mult = float(as_metrics.get('ml_size_mult', 1.0))
+            delta = (z_mult - 1.0) * 100
+            st.metric("Size Adj", f"x{z_mult:.2f}", f"{delta:+.0f}%")
     
     # Adaptive Tuning Metrics Row
     if as_metrics.get('adjustments', 0) > 0:

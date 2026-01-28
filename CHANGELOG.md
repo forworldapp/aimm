@@ -2,6 +2,17 @@
 
 All notable changes to the AIMM (AI Market Maker) project will be documented in this file.
 
+## [v4.0.0] - 2026-01-27
+### MVP Release - ML Enhanced Strategy
+- **New Feature**: Integrated LightGBM Volatility & Direction Models
+  - Volatility Model: Predicts 15m range to adjust spread/size (Aggressive mode)
+  - Direction Model: Predicts 15m trend to skew grid layers
+- **Performance**: Validated improvement over baseline (Sharpe +61%, PnL +68%)
+- **Dashboard**: Added "v4.0 ML Insights" section with real-time predictions
+- **Strategy**: Added `ml/strategy_v4.py` and updated `market_maker.py` integration
+
+---
+
 ## [v3.8.1-hmm-baseline] - 2026-01-27
 
 ### 🎯 Baseline Tag

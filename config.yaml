@@ -5,7 +5,7 @@ exchange:
 risk:
   inventory_skew_factor: 0.005
   max_drawdown_pct: 0.05
-  max_loss_usd: 350.0      # Circuit breaker: Based on 12-month analysis (max $327)
+  max_loss_usd: 200.0      # Circuit breaker: "Golden Zone" (Optimized for 10/2025 Crash)
   max_position_usd: 5000.0
 strategy:
   bollinger:

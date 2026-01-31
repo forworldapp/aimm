@@ -2,6 +2,14 @@
 
 All notable changes to the AIMM (AI Market Maker) project will be documented in this file.
 
+## [v4.0.1] - 2026-01-30
+### 🛡️ Circuit Breaker Optimization (Risk Management)
+- **Parameters**: Lowered `max_loss_usd` from $350 to **$200** ("Golden Zone")
+- **Analysis**: Conducted sensitivity scan on Oct 2025 crash data.
+    - $200 limit prevents ~50% more losses compared to $350.
+    - False positive rate increases slightly but prevents major blowups.
+    - Documentation added: `docs/analysis_circuit_breaker_v4.md`
+
 ## [v4.0.0] - 2026-01-27
 ### MVP Release - ML Enhanced Strategy
 - **New Feature**: Integrated LightGBM Volatility & Direction Models

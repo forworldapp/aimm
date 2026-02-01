@@ -2,6 +2,10 @@
 
 All notable changes to the AIMM (AI Market Maker) project will be documented in this file.
 
+## [v4.0.2] - 2026-02-01
+### Added
+- **Emergency Liquidation**: Circuit breaker now triggers an immediate **Market Close** of all positions when `max_loss_usd` ($200) is breached. Matches empirical "Toxic Inventory" analysis findings.
+
 ## [v4.0.1] - 2026-01-30
 ### 🛡️ Circuit Breaker Optimization (Risk Management)
 - **Parameters**: Lowered `max_loss_usd` from $350 to **$200** ("Golden Zone")

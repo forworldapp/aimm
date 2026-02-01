@@ -716,8 +716,15 @@ class MarketMaker:
         unrealized_pnl = position.get('unrealizedPnL', 0.0)
         if unrealized_pnl < -self.max_loss_usd:
             self.logger.critical(f"🚨 CIRCUIT BREAKER: Loss ${abs(unrealized_pnl):.2f} exceeds max ${self.max_loss_usd:.2f}")
-            self.logger.critical("Cancelling all orders and stopping bot!")
+            self.logger.critical("Cancelling all orders and LIQUIDATING position!")
+            
+            # 1. Cancel Open Orders (Prevent stacking)
             await self.exchange.cancel_all_orders(self.symbol)
+            
+            # 2. Liquidate Position (Market Close)
+            await self.exchange.close_position(self.symbol)
+            
+            # 3. Stop Logic
             self.is_active = False
             return
         

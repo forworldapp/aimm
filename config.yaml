@@ -67,3 +67,22 @@ strategy:
 
 
 
+
+# v5.0 Order Flow Analysis
+order_flow_analysis:
+  enabled: true
+  
+  # Order Book Imbalance (OBI)
+  obi:
+    levels: 5
+    threshold: 0.3    # Trigger adjustment if abs(OBI) > 0.3
+  
+  # Trade Flow Toxicity
+  toxicity:
+    window: 100
+    threshold: 0.6    # Trigger defensive mode if Toxicity > 0.6
+  
+  # Adjustments
+  adjustment:
+    max_spread_multiplier: 2.0
+    min_size_multiplier: 0.1

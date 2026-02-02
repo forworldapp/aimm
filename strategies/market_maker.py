@@ -80,6 +80,22 @@ except ImportError:
     ML_V4_AVAILABLE = False
     StrategyV4 = None
 
+# v5.0 Order Flow Analysis
+try:
+    from ml.order_flow_analyzer import OrderFlowAnalyzer
+    ORDER_FLOW_AVAILABLE = True
+except ImportError:
+    ORDER_FLOW_AVAILABLE = False
+    OrderFlowAnalyzer = None
+
+# v5.0 Order Flow Analysis
+try:
+    from ml.order_flow_analyzer import OrderFlowAnalyzer
+    ORDER_FLOW_AVAILABLE = True
+except ImportError:
+    ORDER_FLOW_AVAILABLE = False
+    OrderFlowAnalyzer = None
+
 
 def round_tick_size(price, tick_size):
     return round(price / tick_size) * tick_size
@@ -133,6 +149,12 @@ class MarketMaker:
                 self.strategy_v4 = None
         else:
             self.strategy_v4 = None
+        
+        # v5.0 Order Flow
+        self.order_flow = None
+        if ORDER_FLOW_AVAILABLE and Config.get("order_flow_analysis", "enabled", False):
+            self.order_flow = OrderFlowAnalyzer(Config.get("order_flow_analysis", {}))
+            self.logger.info("🌊 Order Flow Analysis Enabled")
         
     def _load_params(self):
         """Load strategy parameters from config.yaml"""
@@ -838,6 +860,29 @@ class MarketMaker:
             # Also update regime string to show init
             self.current_ml_regime = f"v4:init({len(self.candles)}/60)"
 
+        # --- v5.0 Order Flow Integration ---
+        of_spread_mult = 1.0
+        of_bid_size_mult = 1.0
+        of_ask_size_mult = 1.0
+        of_metrics = {}
+
+        if self.order_flow:
+            try:
+                # Calculate OBI/Toxicity
+                # orderbook is available from line 681
+                of_adj = self.order_flow.get_adjustment_factors(orderbook, trade=None)
+                
+                of_spread_mult = of_adj['spread_mult']
+                of_bid_size_mult = of_adj['bid_size_mult']
+                of_ask_size_mult = of_adj['ask_size_mult']
+                of_metrics = of_adj['metrics']
+                
+                if of_spread_mult > 1.0 or of_bid_size_mult < 1.0 or of_ask_size_mult < 1.0:
+                    self.logger.info(f"🌊 Order Flow: OBI={of_metrics.get('obi',0):.2f} Tox={of_metrics.get('toxicity',0):.2f} | Spr x{of_spread_mult:.2f} Bid x{of_bid_size_mult:.2f} Ask x{of_ask_size_mult:.2f}")
+
+            except Exception as e:
+                self.logger.error(f"Order Flow Error: {e}")
+
         # 2. Calculate Parameters
         # Fix Division by Zero: Use calculated qty based on price
         estimated_qty = (self.order_size_usd / mid_price) if mid_price > 0 else self.amount
@@ -853,7 +898,11 @@ class MarketMaker:
         final_spread = self._calculate_dynamic_spread()
         
         # Apply ML Spread Multiplier
+        # Apply ML Spread Multiplier
         final_spread *= ml_spread_mult
+        
+        # Apply Order Flow Spread Multiplier (v5.0)
+        final_spread *= of_spread_mult
         
         # === Adverse Selection Adjustment (Phase 1.2) ===
         if self.as_detector and self.as_spread_add_bps > 0:
@@ -1022,6 +1071,14 @@ class MarketMaker:
                 bid_qty = qty
                 ask_qty = qty
             
+            # Apply Order Flow Size Multipliers (v5.0)
+            bid_qty *= of_bid_size_mult
+            ask_qty *= of_ask_size_mult
+            
+            # Re-check minimums
+            bid_qty = max(bid_qty, 0.001)
+            ask_qty = max(ask_qty, 0.001)
+            
             if allow_buy:
                 buy_orders.append((bid_p, bid_qty))
             if allow_sell:
@@ -1143,7 +1200,11 @@ class MarketMaker:
                 "ml_vol_value": ml_metrics.get('vol_value', 0),
                 "ml_confidence": ml_metrics.get('confidence', 0),
                 "ml_spread_mult": ml_metrics.get('spread_mult', 1.0),
+                "ml_spread_mult": ml_metrics.get('spread_mult', 1.0),
                 "ml_size_mult": ml_metrics.get('size_mult', 1.0),
+                # v5 Metrics
+                "of_obi": of_metrics.get('obi', 0.0),
+                "of_toxicity": of_metrics.get('toxicity', 0.0),
                 "ml_direction": ml_metrics.get('direction'),
                 "ml_vol_regime": ml_metrics.get('vol_regime')
             })

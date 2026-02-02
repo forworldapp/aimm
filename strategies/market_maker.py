@@ -88,13 +88,14 @@ except ImportError:
     ORDER_FLOW_AVAILABLE = False
     OrderFlowAnalyzer = None
 
-# v5.0 Order Flow Analysis
+# v5.1 Funding Rate Arbitrage
 try:
-    from ml.order_flow_analyzer import OrderFlowAnalyzer
-    ORDER_FLOW_AVAILABLE = True
+    from core.funding_monitor import FundingRateMonitor, FundingIntegratedMM
+    FUNDING_AVAILABLE = True
 except ImportError:
-    ORDER_FLOW_AVAILABLE = False
-    OrderFlowAnalyzer = None
+    FUNDING_AVAILABLE = False
+    FundingRateMonitor = None
+    FundingIntegratedMM = None
 
 
 def round_tick_size(price, tick_size):
@@ -155,6 +156,15 @@ class MarketMaker:
         if ORDER_FLOW_AVAILABLE and Config.get("order_flow_analysis", "enabled", False):
             self.order_flow = OrderFlowAnalyzer(Config.get("order_flow_analysis", {}))
             self.logger.info("🌊 Order Flow Analysis Enabled")
+        
+        # v5.1 Funding Rate
+        self.funding_monitor = None
+        self.funding_integrator = None
+        if FUNDING_AVAILABLE and Config.get("funding_rate_arbitrage", "enabled", False):
+            funding_config = Config.get("funding_rate_arbitrage", {})
+            self.funding_monitor = FundingRateMonitor(funding_config.get('monitoring', {}))
+            self.funding_integrator = FundingIntegratedMM(funding_config.get('integration', {}))
+            self.logger.info("💰 Funding Rate Arbitrage Enabled")
         
     def _load_params(self):
         """Load strategy parameters from config.yaml"""
@@ -883,6 +893,35 @@ class MarketMaker:
             except Exception as e:
                 self.logger.error(f"Order Flow Error: {e}")
 
+        # --- v5.1 Funding Rate Integration ---
+        fr_bid_size_mult = 1.0
+        fr_ask_size_mult = 1.0
+        fr_freeze_orders = False
+        fr_metrics = {}
+
+        if self.funding_monitor and self.funding_integrator:
+            try:
+                # Get funding analysis
+                fr_analysis = self.funding_monitor.analyze_opportunity()
+                
+                # Get adjustment
+                fr_adj = self.funding_integrator.get_adjustment(
+                    fr_analysis,
+                    current_inventory=current_pos_qty,
+                    max_inventory=self.max_position_usd / mid_price if mid_price > 0 else 1.0
+                )
+                
+                fr_bid_size_mult = fr_adj['bid_size_mult']
+                fr_ask_size_mult = fr_adj['ask_size_mult']
+                fr_freeze_orders = fr_adj['freeze_orders']
+                fr_metrics = fr_adj
+                
+                if fr_analysis['opportunity']:
+                    self.logger.info(f"💰 Funding: {fr_analysis['direction'].upper()} bias | Yield {fr_analysis['annual_yield']:.1f}%/yr | {fr_analysis['hours_to_funding']:.1f}h to funding")
+                
+            except Exception as e:
+                self.logger.error(f"Funding Rate Error: {e}")
+
         # 2. Calculate Parameters
         # Fix Division by Zero: Use calculated qty based on price
         estimated_qty = (self.order_size_usd / mid_price) if mid_price > 0 else self.amount
@@ -1074,6 +1113,10 @@ class MarketMaker:
             # Apply Order Flow Size Multipliers (v5.0)
             bid_qty *= of_bid_size_mult
             ask_qty *= of_ask_size_mult
+            
+            # Apply Funding Rate Size Multipliers (v5.1)
+            bid_qty *= fr_bid_size_mult
+            ask_qty *= fr_ask_size_mult
             
             # Re-check minimums
             bid_qty = max(bid_qty, 0.001)

@@ -86,3 +86,19 @@ order_flow_analysis:
   adjustment:
     max_spread_multiplier: 2.0
     min_size_multiplier: 0.1
+
+# v5.1 Funding Rate Arbitrage
+funding_rate_arbitrage:
+  enabled: true
+  
+  # Monitoring config
+  monitoring:
+    threshold_high: 0.0001   # 0.01% = ~8.76% annual
+    threshold_low: -0.0001
+    min_yield_annual: 5.0    # Minimum 5% annual yield
+  
+  # Integration config
+  integration:
+    funding_weight: 0.3       # Adjustment strength
+    max_inventory_skew: 0.5   # Max inventory bias
+    freeze_before_minutes: 30 # Freeze orders before funding

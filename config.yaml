@@ -125,3 +125,18 @@ microstructure_signals:
   # Integration thresholds
   defensive_risk_score: 1.0
   cautious_risk_score: 0.5
+
+# v5.3 Cross-Asset Hedging [DISABLED - PnL -$5,406]
+cross_asset_hedge:
+  enabled: false  # Rollback: simulation issues
+  
+  # Correlation settings
+  correlation:
+    window_minutes: 1440  # 1 day rolling window
+    min_correlation: 0.7  # Minimum correlation for hedging
+  
+  # Hedge settings
+  hedge:
+    ratio_beta: 0.8          # 80% of calculated hedge
+    min_position_usd: 100    # Minimum position to create
+    rebalance_threshold: 0.1 # 10% position change

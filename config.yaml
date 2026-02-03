@@ -140,3 +140,21 @@ cross_asset_hedge:
     ratio_beta: 0.8          # 80% of calculated hedge
     min_position_usd: 100    # Minimum position to create
     rebalance_threshold: 0.1 # 10% position change
+
+# v5.4 Execution Algorithms
+execution_algo:
+  enabled: true
+  
+  # TWAP settings
+  twap:
+    slice_interval_seconds: 60
+    participation_rate: 0.1
+  
+  # VWAP settings
+  vwap:
+    adapt_to_volume: true
+  
+  # Adaptive settings
+  adaptive:
+    volatility_threshold: 0.02
+    spread_threshold: 0.003

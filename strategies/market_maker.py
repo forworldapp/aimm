@@ -97,6 +97,14 @@ except ImportError:
     FundingRateMonitor = None
     FundingIntegratedMM = None
 
+# v5.2 Microstructure Signals
+try:
+    from ml.microstructure import MicrostructureIntegrator
+    MICROSTRUCTURE_AVAILABLE = True
+except ImportError:
+    MICROSTRUCTURE_AVAILABLE = False
+    MicrostructureIntegrator = None
+
 
 def round_tick_size(price, tick_size):
     return round(price / tick_size) * tick_size
@@ -165,6 +173,13 @@ class MarketMaker:
             self.funding_monitor = FundingRateMonitor(funding_config.get('monitoring', {}))
             self.funding_integrator = FundingIntegratedMM(funding_config.get('integration', {}))
             self.logger.info("💰 Funding Rate Arbitrage Enabled")
+        
+        # v5.2 Microstructure Signals
+        self.microstructure = None
+        if MICROSTRUCTURE_AVAILABLE and Config.get("microstructure_signals", "enabled", False):
+            ms_config = Config.get("microstructure_signals", {})
+            self.microstructure = MicrostructureIntegrator(ms_config)
+            self.logger.info("🔬 Microstructure Signals Enabled")
         
     def _load_params(self):
         """Load strategy parameters from config.yaml"""
@@ -922,6 +937,24 @@ class MarketMaker:
             except Exception as e:
                 self.logger.error(f"Funding Rate Error: {e}")
 
+        # --- v5.2 Microstructure Signals Integration ---
+        ms_spread_mult = 1.0
+        ms_size_mult = 1.0
+        ms_metrics = {}
+
+        if self.microstructure:
+            try:
+                ms_analysis = self.microstructure.analyze()
+                ms_spread_mult = ms_analysis['spread_mult']
+                ms_size_mult = ms_analysis['size_mult']
+                ms_metrics = ms_analysis['metrics']
+                
+                if ms_analysis['action'] != 'normal':
+                    self.logger.info(f"🔬 Microstructure: {ms_analysis['action'].upper()} | VPIN={ms_metrics.get('vpin',0):.2f} | ArrivalRatio={ms_metrics.get('arrival_ratio',1):.1f}x")
+                
+            except Exception as e:
+                self.logger.error(f"Microstructure Error: {e}")
+
         # 2. Calculate Parameters
         # Fix Division by Zero: Use calculated qty based on price
         estimated_qty = (self.order_size_usd / mid_price) if mid_price > 0 else self.amount
@@ -942,6 +975,9 @@ class MarketMaker:
         
         # Apply Order Flow Spread Multiplier (v5.0)
         final_spread *= of_spread_mult
+        
+        # Apply Microstructure Spread Multiplier (v5.2)
+        final_spread *= ms_spread_mult
         
         # === Adverse Selection Adjustment (Phase 1.2) ===
         if self.as_detector and self.as_spread_add_bps > 0:

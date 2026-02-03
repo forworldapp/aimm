@@ -18,7 +18,7 @@ from core.funding_monitor import FundingRateMonitor, FundingIntegratedMM
 # Configuration
 DATA_FILE = "data/btcusdt_1m_1year.csv"
 CHUNK_DAYS = 7
-MAX_CHUNKS = 8  # ~2 months
+MAX_CHUNKS = 52  # Full year
 INITIAL_BALANCE = 10000
 ORDER_SIZE_USD = 200
 SPREAD_PCT = 0.002

@@ -158,3 +158,9 @@ execution_algo:
   adaptive:
     volatility_threshold: 0.02
     spread_threshold: 0.003
+
+# v6.0 RL Agent
+rl_agent:
+  enabled: false  # Enable after validating model
+  model_path: "models/mm_ppo_50k"
+  use_deterministic: true

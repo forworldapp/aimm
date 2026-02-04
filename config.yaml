@@ -118,10 +118,10 @@ microstructure_signals:
   vpin:
     bucket_size_usd: 10000
     n_buckets: 50
-    threshold: 0.65           # Week 1: 0.65 (was 0.7)
-    base_threshold: 0.65      # For AdaptiveVPIN
+    threshold: 0.50           # Rank 1 optimal (was 0.65)
+    base_threshold: 0.50      # For AdaptiveVPIN
     max_threshold: 0.80       # Upper limit for adaptive
-    min_threshold: 0.50       # Lower limit for adaptive
+    min_threshold: 0.40       # Lower limit for adaptive
     volatility_adjustment: 0.10
     volume_adjustment: 0.10
     trend_adjustment: 0.05
@@ -135,9 +135,9 @@ microstructure_signals:
   volume_clock:
     volume_per_tick_usd: 50000
   
-  # Integration thresholds (raised to reduce false positives)
-  defensive_risk_score: 1.5   # Was 1.0
-  cautious_risk_score: 0.8    # Was 0.5
+  # Integration thresholds (Rank 1 optimal)
+  defensive_risk_score: 1.5   # Rank 1
+  cautious_risk_score: 0.8    # Rank 1
 
 # v5.3 Cross-Asset Hedging [DISABLED - PnL -$5,406]
 cross_asset_hedge:

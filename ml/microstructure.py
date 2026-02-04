@@ -69,6 +69,83 @@ class VPIN:
         return self.calculate() > self.threshold
 
 
+class AdaptiveVPIN(VPIN):
+    """
+    Adaptive VPIN with dynamic threshold based on market conditions
+    
+    - High volatility → threshold increases
+    - Volume surge → threshold increases
+    - Trending market → threshold increases slightly
+    """
+    
+    def __init__(self, config: dict = None):
+        super().__init__(config)
+        
+        # Adaptive parameters
+        self.base_threshold = self.config.get('base_threshold', 0.5)
+        self.volatility_adjustment = self.config.get('volatility_adjustment', 0.1)
+        self.volume_adjustment = self.config.get('volume_adjustment', 0.1)
+        self.trend_adjustment = self.config.get('trend_adjustment', 0.05)
+        self.max_threshold = self.config.get('max_threshold', 0.8)
+        self.min_threshold = self.config.get('min_threshold', 0.4)
+        
+        # Current state
+        self._current_volatility = 0.0
+        self._current_volume_ratio = 1.0
+        self._is_trending = False
+    
+    def update_market_conditions(self, volatility: float, volume_ratio: float, is_trending: bool = False):
+        """
+        Update market conditions for adaptive threshold
+        
+        Args:
+            volatility: Current volatility (e.g., 0.02 = 2%)
+            volume_ratio: Current volume / baseline volume
+            is_trending: Whether market is in a trend
+        """
+        self._current_volatility = volatility
+        self._current_volume_ratio = volume_ratio
+        self._is_trending = is_trending
+    
+    def calculate_adaptive_threshold(self) -> float:
+        """
+        Calculate dynamic threshold based on market conditions
+        
+        Higher threshold = fewer alerts = more confident in informedness
+        """
+        threshold = self.base_threshold
+        
+        # High volatility → increase threshold (less sensitive)
+        if self._current_volatility > 0.02:
+            threshold += self.volatility_adjustment
+        elif self._current_volatility > 0.01:
+            threshold += self.volatility_adjustment * 0.5
+        
+        # Volume surge → increase threshold
+        if self._current_volume_ratio > 2.0:
+            threshold += self.volume_adjustment
+        elif self._current_volume_ratio > 1.5:
+            threshold += self.volume_adjustment * 0.5
+        
+        # Trending market → slight increase
+        if self._is_trending:
+            threshold += self.trend_adjustment
+        
+        # Clamp to range
+        threshold = max(self.min_threshold, min(threshold, self.max_threshold))
+        
+        return threshold
+    
+    def is_elevated(self) -> bool:
+        """Check if VPIN is above adaptive threshold"""
+        adaptive_threshold = self.calculate_adaptive_threshold()
+        return self.calculate() > adaptive_threshold
+    
+    def get_threshold(self) -> float:
+        """Get current adaptive threshold"""
+        return self.calculate_adaptive_threshold()
+
+
 class TradeArrivalAnalyzer:
     """
     거래 도착률 분석
@@ -183,13 +260,20 @@ class MicrostructureIntegrator:
         arrival_config = self.config.get('trade_arrival', {})
         volume_config = self.config.get('volume_clock', {})
         
-        self.vpin = VPIN(vpin_config)
+        # Use AdaptiveVPIN if configured
+        use_adaptive = self.config.get('use_adaptive_vpin', True)
+        if use_adaptive:
+            self.vpin = AdaptiveVPIN(vpin_config)
+            self.logger.info("📈 Using Adaptive VPIN")
+        else:
+            self.vpin = VPIN(vpin_config)
+        
         self.arrival = TradeArrivalAnalyzer(arrival_config)
         self.volume_clock = VolumeClock(volume_config)
         
         # Integration params
-        self.defensive_risk_score = self.config.get('defensive_risk_score', 1.0)
-        self.cautious_risk_score = self.config.get('cautious_risk_score', 0.5)
+        self.defensive_risk_score = self.config.get('defensive_risk_score', 1.5)  # Raised from 1.0
+        self.cautious_risk_score = self.config.get('cautious_risk_score', 0.8)    # Raised from 0.5
         
     def update_trade(self, trade: Dict, timestamp: float = None):
         """Update all components with new trade"""

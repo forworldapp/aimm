@@ -103,15 +103,28 @@ funding_rate_arbitrage:
     max_inventory_skew: 0.5   # Max inventory bias
     freeze_before_minutes: 30 # Freeze orders before funding
 
-# v5.2 Microstructure Signals [DISABLED - PnL -$826]
+# v5.2 Microstructure Signals [RE-ENABLED with Week 1 tuning]
 microstructure_signals:
-  enabled: false  # Rollback: Adverse -3% but PnL -$826
+  enabled: true  # Re-enabled with adaptive tuning
+  use_adaptive_vpin: true  # Use AdaptiveVPIN class
+  
+  # Kill Switch - Auto-disable if PnL drops below threshold
+  kill_switch:
+    enabled: true
+    max_loss_usd: 200
+    check_interval_minutes: 60
   
   # VPIN settings
   vpin:
     bucket_size_usd: 10000
     n_buckets: 50
-    threshold: 0.7
+    threshold: 0.65           # Week 1: 0.65 (was 0.7)
+    base_threshold: 0.65      # For AdaptiveVPIN
+    max_threshold: 0.80       # Upper limit for adaptive
+    min_threshold: 0.50       # Lower limit for adaptive
+    volatility_adjustment: 0.10
+    volume_adjustment: 0.10
+    trend_adjustment: 0.05
   
   # Trade Arrival Rate
   trade_arrival:
@@ -122,9 +135,9 @@ microstructure_signals:
   volume_clock:
     volume_per_tick_usd: 50000
   
-  # Integration thresholds
-  defensive_risk_score: 1.0
-  cautious_risk_score: 0.5
+  # Integration thresholds (raised to reduce false positives)
+  defensive_risk_score: 1.5   # Was 1.0
+  cautious_risk_score: 0.8    # Was 0.5
 
 # v5.3 Cross-Asset Hedging [DISABLED - PnL -$5,406]
 cross_asset_hedge:

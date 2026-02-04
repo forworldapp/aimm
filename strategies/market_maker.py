@@ -105,6 +105,22 @@ except ImportError:
     MICROSTRUCTURE_AVAILABLE = False
     MicrostructureIntegrator = None
 
+# v5.3 Cross-Asset Hedging
+try:
+    from core.cross_asset_hedger import CrossAssetHedgeIntegrator
+    CROSS_ASSET_AVAILABLE = True
+except ImportError:
+    CROSS_ASSET_AVAILABLE = False
+    CrossAssetHedgeIntegrator = None
+
+# v5.4 Execution Algo
+try:
+    from core.execution_algo import ExecutionIntegrator
+    EXECUTION_AVAILABLE = True
+except ImportError:
+    EXECUTION_AVAILABLE = False
+    ExecutionIntegrator = None
+
 
 def round_tick_size(price, tick_size):
     return round(price / tick_size) * tick_size
@@ -162,14 +178,14 @@ class MarketMaker:
         # v5.0 Order Flow
         self.order_flow = None
         if ORDER_FLOW_AVAILABLE and Config.get("order_flow_analysis", "enabled", False):
-            self.order_flow = OrderFlowAnalyzer(Config.get("order_flow_analysis", {}))
+            self.order_flow = OrderFlowAnalyzer(Config.get_section("order_flow_analysis"))
             self.logger.info("🌊 Order Flow Analysis Enabled")
         
         # v5.1 Funding Rate
         self.funding_monitor = None
         self.funding_integrator = None
         if FUNDING_AVAILABLE and Config.get("funding_rate_arbitrage", "enabled", False):
-            funding_config = Config.get("funding_rate_arbitrage", {})
+            funding_config = Config.get_section("funding_rate_arbitrage")
             self.funding_monitor = FundingRateMonitor(funding_config.get('monitoring', {}))
             self.funding_integrator = FundingIntegratedMM(funding_config.get('integration', {}))
             self.logger.info("💰 Funding Rate Arbitrage Enabled")
@@ -177,9 +193,23 @@ class MarketMaker:
         # v5.2 Microstructure Signals
         self.microstructure = None
         if MICROSTRUCTURE_AVAILABLE and Config.get("microstructure_signals", "enabled", False):
-            ms_config = Config.get("microstructure_signals", {})
+            ms_config = Config.get_section("microstructure_signals")
             self.microstructure = MicrostructureIntegrator(ms_config)
             self.logger.info("🔬 Microstructure Signals Enabled")
+        
+        # v5.3 Cross-Asset Hedging
+        self.cross_asset = None
+        if CROSS_ASSET_AVAILABLE and Config.get("cross_asset_hedge", "enabled", False):
+            ca_config = Config.get_section("cross_asset_hedge")
+            self.cross_asset = CrossAssetHedgeIntegrator(ca_config)
+            self.logger.info("🔗 Cross-Asset Hedging Enabled")
+
+        # v5.4 Execution Algo
+        self.execution = None
+        if EXECUTION_AVAILABLE and Config.get("execution_algo", "enabled", False):
+            exec_config = Config.get_section("execution_algo")
+            self.execution = ExecutionIntegrator(exec_config)
+            self.logger.info("⚡ Execution Algorithms Enabled")
         
     def _load_params(self):
         """Load strategy parameters from config.yaml"""

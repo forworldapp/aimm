@@ -2,6 +2,73 @@
 
 All notable changes to the AIMM (AI Market Maker) project will be documented in this file.
 
+## [v6.0.0] - 2026-02-03
+### 🤖 RL Agent Implementation
+- **Gymnasium Environment**: Custom `MarketMakingEnv` with 8-dim observation, 3-dim action
+- **PPO Training**: CPU-friendly training with stable-baselines3
+- **RLAgentWrapper**: Integration wrapper for MarketMaker
+- **Status**: Model trained (50k steps), NOT ENABLED by default (needs GPU training for production)
+
+### 📚 Documentation
+- Added `docs/ML_MODULES.md` - Comprehensive guide for all ML modules
+- Updated CHANGELOG with all v5.x features
+
+## [v5.4.0] - 2026-02-03
+### ⚡ Execution Algorithms
+- **TWAP Executor**: Time-Weighted Average Price order slicing
+- **VWAP Executor**: Volume-weighted execution
+- **Adaptive Executor**: Dynamic strategy selection based on volatility
+- **Backtest Result**: Saves $93.67/year in slippage (90% reduction) ✅
+
+## [v5.3.0] - 2026-02-03
+### 🔗 Cross-Asset Hedging (DISABLED)
+- **CorrelationAnalyzer**: BTC/ETH rolling correlation
+- **CrossAssetHedger**: Beta-based directional hedge
+- **Backtest Result**: -$5,406 loss → ROLLED BACK ❌
+
+## [v5.2.0] - 2026-02-03
+### 🔬 Microstructure Signals (DISABLED)
+- **VPIN**: Volume-Synchronized Probability of Informed Trading
+- **TradeArrivalAnalyzer**: Trade frequency analysis
+- **VolumeClock**: Volume-based time measurement
+- **Backtest Result**: Adverse -3%, PnL -$826 → ROLLED BACK ❌
+
+## [v5.1.0] - 2026-02-03
+### 💰 Funding Rate Arbitrage ⭐
+- **FundingRateMonitor**: Tracks funding rates, calculates annualized APR
+- **FundingIntegratedMM**: Adjusts bid/ask sizing based on funding direction
+- **Freeze Logic**: Holds orders before funding settlement
+- **Backtest Result**: +$890/year improvement ✅
+
+## [v5.0.0] - 2026-02-02
+### 📊 Order Flow Analysis
+- **OrderFlowAnalyzer**: Bid/ask imbalance detection
+- **Spread/Size Adjustment**: Widens spread in adverse conditions
+- **Backtest Result**: Adverse selection -0.3% (risk trade-off) ✅
+
+## [v4.0.2] - 2026-02-01
+### Added
+- **Emergency Liquidation**: Circuit breaker now triggers an immediate **Market Close** of all positions when `max_loss_usd` ($200) is breached. Matches empirical "Toxic Inventory" analysis findings.
+
+## [v4.0.1] - 2026-01-30
+### 🛡️ Circuit Breaker Optimization (Risk Management)
+- **Parameters**: Lowered `max_loss_usd` from $350 to **$200** ("Golden Zone")
+- **Analysis**: Conducted sensitivity scan on Oct 2025 crash data.
+    - $200 limit prevents ~50% more losses compared to $350.
+    - False positive rate increases slightly but prevents major blowups.
+    - Documentation added: `docs/analysis_circuit_breaker_v4.md`
+
+## [v4.0.0] - 2026-01-27
+### MVP Release - ML Enhanced Strategy
+- **New Feature**: Integrated LightGBM Volatility & Direction Models
+  - Volatility Model: Predicts 15m range to adjust spread/size (Aggressive mode)
+  - Direction Model: Predicts 15m trend to skew grid layers
+- **Performance**: Validated improvement over baseline (Sharpe +61%, PnL +68%)
+- **Dashboard**: Added "v4.0 ML Insights" section with real-time predictions
+- **Strategy**: Added `ml/strategy_v4.py` and updated `market_maker.py` integration
+
+---
+
 ## [v3.8.1-hmm-baseline] - 2026-01-27
 
 ### 🎯 Baseline Tag

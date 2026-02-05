@@ -1,0 +1,53 @@
+{
+  "target": "range_5m",
+  "version": "20260127_152805",
+  "metrics": {
+    "rmse": 0.09662407733120643,
+    "mae": 0.05888229547037894,
+    "r2": 0.5348811257685708,
+    "direction_accuracy": 0.442531021827561,
+    "regime_accuracy": 0.7958809187732581
+  },
+  "top_features": [
+    {
+      "feature": "atr",
+      "importance": 24192.110043169
+    },
+    {
+      "feature": "volatility_20",
+      "importance": 9901.45074255392
+    },
+    {
+      "feature": "volatility_60",
+      "importance": 7615.884738991037
+    },
+    {
+      "feature": "high_low_range",
+      "importance": 4707.566330432892
+    },
+    {
+      "feature": "bb_width",
+      "importance": 1204.6952852141112
+    },
+    {
+      "feature": "minutes_to_funding",
+      "importance": 729.6423316858709
+    },
+    {
+      "feature": "adx",
+      "importance": 659.7564765112475
+    },
+    {
+      "feature": "bb_pct",
+      "importance": 478.4222889468074
+    },
+    {
+      "feature": "returns_60m",
+      "importance": 474.0203184224665
+    },
+    {
+      "feature": "close_to_vwap",
+      "importance": 412.4456765316427
+    }
+  ]
+}

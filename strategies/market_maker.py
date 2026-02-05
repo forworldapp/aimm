@@ -71,6 +71,56 @@ except ImportError:
     ADVERSE_SELECTION_AVAILABLE = False
     AdverseSelectionDetector = None
 
+# v4.0 ML Strategy
+try:
+    from ml.strategy_v4 import StrategyV4
+    from ml.feature_engineering import get_feature_engineer
+    ML_V4_AVAILABLE = True
+except ImportError:
+    ML_V4_AVAILABLE = False
+    StrategyV4 = None
+
+# v5.0 Order Flow Analysis
+try:
+    from ml.order_flow_analyzer import OrderFlowAnalyzer
+    ORDER_FLOW_AVAILABLE = True
+except ImportError:
+    ORDER_FLOW_AVAILABLE = False
+    OrderFlowAnalyzer = None
+
+# v5.1 Funding Rate Arbitrage
+try:
+    from core.funding_monitor import FundingRateMonitor, FundingIntegratedMM
+    FUNDING_AVAILABLE = True
+except ImportError:
+    FUNDING_AVAILABLE = False
+    FundingRateMonitor = None
+    FundingIntegratedMM = None
+
+# v5.2 Microstructure Signals
+try:
+    from ml.microstructure import MicrostructureIntegrator
+    MICROSTRUCTURE_AVAILABLE = True
+except ImportError:
+    MICROSTRUCTURE_AVAILABLE = False
+    MicrostructureIntegrator = None
+
+# v5.3 Cross-Asset Hedging
+try:
+    from core.cross_asset_hedger import CrossAssetHedgeIntegrator
+    CROSS_ASSET_AVAILABLE = True
+except ImportError:
+    CROSS_ASSET_AVAILABLE = False
+    CrossAssetHedgeIntegrator = None
+
+# v5.4 Execution Algo
+try:
+    from core.execution_algo import ExecutionIntegrator
+    EXECUTION_AVAILABLE = True
+except ImportError:
+    EXECUTION_AVAILABLE = False
+    ExecutionIntegrator = None
+
 
 def round_tick_size(price, tick_size):
     return round(price / tick_size) * tick_size
@@ -92,7 +142,7 @@ class MarketMaker:
         
         # Trend & Volatility State
         self.price_history = []
-        self.history_max_len = 50
+        self.history_max_len = 200  # Increased for ML features (needs 60m+)
         
         # Candle Data for Advanced Filters (OHLC)
         self.candles = pd.DataFrame(columns=['timestamp', 'open', 'high', 'low', 'close'])
@@ -110,6 +160,56 @@ class MarketMaker:
 
         # Load Params & Initialize Filter
         self._load_params()
+        
+        # Initialize v4.0 Strategy
+        if ML_V4_AVAILABLE:
+            try:
+                self.strategy_v4 = StrategyV4()
+                # Initialize Feature Engineer (exchange name from config or default to binance for paper)
+                exchange_name = 'binance' # Default for now as models are trained on it
+                self.fe = get_feature_engineer(exchange_name)
+                self.logger.info("✅ v4.0 ML Strategy Initialized")
+            except Exception as e:
+                self.logger.error(f"❌ Failed to initialize v4.0 Strategy: {e}")
+                self.strategy_v4 = None
+        else:
+            self.strategy_v4 = None
+        
+        # v5.0 Order Flow
+        self.order_flow = None
+        if ORDER_FLOW_AVAILABLE and Config.get("order_flow_analysis", "enabled", False):
+            self.order_flow = OrderFlowAnalyzer(Config.get_section("order_flow_analysis"))
+            self.logger.info("🌊 Order Flow Analysis Enabled")
+        
+        # v5.1 Funding Rate
+        self.funding_monitor = None
+        self.funding_integrator = None
+        if FUNDING_AVAILABLE and Config.get("funding_rate_arbitrage", "enabled", False):
+            funding_config = Config.get_section("funding_rate_arbitrage")
+            self.funding_monitor = FundingRateMonitor(funding_config.get('monitoring', {}))
+            self.funding_integrator = FundingIntegratedMM(funding_config.get('integration', {}))
+            self.logger.info("💰 Funding Rate Arbitrage Enabled")
+        
+        # v5.2 Microstructure Signals
+        self.microstructure = None
+        if MICROSTRUCTURE_AVAILABLE and Config.get("microstructure_signals", "enabled", False):
+            ms_config = Config.get_section("microstructure_signals")
+            self.microstructure = MicrostructureIntegrator(ms_config)
+            self.logger.info("🔬 Microstructure Signals Enabled")
+        
+        # v5.3 Cross-Asset Hedging
+        self.cross_asset = None
+        if CROSS_ASSET_AVAILABLE and Config.get("cross_asset_hedge", "enabled", False):
+            ca_config = Config.get_section("cross_asset_hedge")
+            self.cross_asset = CrossAssetHedgeIntegrator(ca_config)
+            self.logger.info("🔗 Cross-Asset Hedging Enabled")
+
+        # v5.4 Execution Algo
+        self.execution = None
+        if EXECUTION_AVAILABLE and Config.get("execution_algo", "enabled", False):
+            exec_config = Config.get_section("execution_algo")
+            self.execution = ExecutionIntegrator(exec_config)
+            self.logger.info("⚡ Execution Algorithms Enabled")
         
     def _load_params(self):
         """Load strategy parameters from config.yaml"""
@@ -693,8 +793,15 @@ class MarketMaker:
         unrealized_pnl = position.get('unrealizedPnL', 0.0)
         if unrealized_pnl < -self.max_loss_usd:
             self.logger.critical(f"🚨 CIRCUIT BREAKER: Loss ${abs(unrealized_pnl):.2f} exceeds max ${self.max_loss_usd:.2f}")
-            self.logger.critical("Cancelling all orders and stopping bot!")
+            self.logger.critical("Cancelling all orders and LIQUIDATING position!")
+            
+            # 1. Cancel Open Orders (Prevent stacking)
             await self.exchange.cancel_all_orders(self.symbol)
+            
+            # 2. Liquidate Position (Market Close)
+            await self.exchange.close_position(self.symbol)
+            
+            # 3. Stop Logic
             self.is_active = False
             return
         
@@ -734,6 +841,150 @@ class MarketMaker:
         if hasattr(self.exchange, 'set_market_regime'):
             self.exchange.set_market_regime(effective_regime)
 
+        # --- v4.0 ML Integration ---
+        # Reset ML multipliers
+        ml_spread_mult = 1.0
+        ml_size_mult = 1.0
+        ml_bid_offset = 0
+        ml_ask_offset = 0
+        
+        if self.strategy_v4 and len(self.candles) >= 60:
+            try:
+                # 1. Compute Features
+                # We need to ensure we pass a DataFrame with enough history
+                # self.candles has ['timestamp', 'open', 'high', 'low', 'close']
+                # Feature engineer expects this format plus volume (if available)
+                df_candles = self.candles.copy()
+                if 'volume' not in df_candles.columns:
+                    df_candles['volume'] = 1000.0 # Dummy volume if not available
+                    
+                # Fix dtypes
+                for col in ['open', 'high', 'low', 'close', 'volume']:
+                    df_candles[col] = df_candles[col].astype(float)
+                df_candles['timestamp'] = pd.to_datetime(df_candles['timestamp'], unit='s')
+                df_candles.set_index('timestamp', inplace=True)
+                
+                features = self.fe.compute_features(df_candles)
+                
+                if not features.empty:
+                    last_row = features.iloc[-1]
+                    
+                    # 2. Get v4 Adjustments
+                    adj = self.strategy_v4.get_adjustments(last_row, effective_regime)
+                    
+                    ml_spread_mult = adj['spread_mult']
+                    ml_size_mult = adj['size_mult']
+                    ml_bid_offset = adj['bid_layers']
+                    ml_ask_offset = adj['ask_layers']
+                    
+                    # Store for Dashboard
+                    self.last_ml_metrics = {
+                        'vol_value': self.strategy_v4.predict_volatility(last_row),
+                        'confidence': 0.0,
+                        'spread_mult': ml_spread_mult,
+                        'size_mult': ml_size_mult,
+                        'direction': adj.get('direction'),
+                        'vol_regime': adj.get('vol_regime')
+                    }
+                    if adj.get('direction'):
+                        _, conf = self.strategy_v4.predict_direction(last_row)
+                        self.last_ml_metrics['confidence'] = conf
+                    
+                    # Update regime string for dashboard
+                    self.current_ml_regime = f"v4:{adj['vol_regime']}"
+                    if adj.get('direction'):
+                        self.current_ml_regime += f"_{adj['direction']}"
+                    
+                    # Log significant adjustments
+                    if ml_spread_mult != 1.0 or ml_size_mult != 1.0 or adj.get('direction'):
+                        self.logger.info(f"🤖 ML v4: {adj['vol_regime'].upper()} | Dir {adj.get('direction')} | Spread x{ml_spread_mult:.2f} | Size x{ml_size_mult:.2f}")
+
+            except Exception as e:
+                self.logger.error(f"v4 ML Error: {e}")
+                self.last_ml_metrics = {}
+        elif self.strategy_v4:
+            # Report initialization progress
+            self.last_ml_metrics = {
+                'vol_value': 0,
+                'confidence': 0,
+                'spread_mult': 1.0,
+                'size_mult': 1.0,
+                'direction': None,
+                'vol_regime': f'init ({len(self.candles)}/60)'
+            }
+            # Also update regime string to show init
+            self.current_ml_regime = f"v4:init({len(self.candles)}/60)"
+
+        # --- v5.0 Order Flow Integration ---
+        of_spread_mult = 1.0
+        of_bid_size_mult = 1.0
+        of_ask_size_mult = 1.0
+        of_metrics = {}
+
+        if self.order_flow:
+            try:
+                # Calculate OBI/Toxicity
+                # orderbook is available from line 681
+                of_adj = self.order_flow.get_adjustment_factors(orderbook, trade=None)
+                
+                of_spread_mult = of_adj['spread_mult']
+                of_bid_size_mult = of_adj['bid_size_mult']
+                of_ask_size_mult = of_adj['ask_size_mult']
+                of_metrics = of_adj['metrics']
+                
+                if of_spread_mult > 1.0 or of_bid_size_mult < 1.0 or of_ask_size_mult < 1.0:
+                    self.logger.info(f"🌊 Order Flow: OBI={of_metrics.get('obi',0):.2f} Tox={of_metrics.get('toxicity',0):.2f} | Spr x{of_spread_mult:.2f} Bid x{of_bid_size_mult:.2f} Ask x{of_ask_size_mult:.2f}")
+
+            except Exception as e:
+                self.logger.error(f"Order Flow Error: {e}")
+
+        # --- v5.1 Funding Rate Integration ---
+        fr_bid_size_mult = 1.0
+        fr_ask_size_mult = 1.0
+        fr_freeze_orders = False
+        fr_metrics = {}
+
+        if self.funding_monitor and self.funding_integrator:
+            try:
+                # Get funding analysis
+                fr_analysis = self.funding_monitor.analyze_opportunity()
+                
+                # Get adjustment
+                fr_adj = self.funding_integrator.get_adjustment(
+                    fr_analysis,
+                    current_inventory=current_pos_qty,
+                    max_inventory=self.max_position_usd / mid_price if mid_price > 0 else 1.0
+                )
+                
+                fr_bid_size_mult = fr_adj['bid_size_mult']
+                fr_ask_size_mult = fr_adj['ask_size_mult']
+                fr_freeze_orders = fr_adj['freeze_orders']
+                fr_metrics = fr_adj
+                
+                if fr_analysis['opportunity']:
+                    self.logger.info(f"💰 Funding: {fr_analysis['direction'].upper()} bias | Yield {fr_analysis['annual_yield']:.1f}%/yr | {fr_analysis['hours_to_funding']:.1f}h to funding")
+                
+            except Exception as e:
+                self.logger.error(f"Funding Rate Error: {e}")
+
+        # --- v5.2 Microstructure Signals Integration ---
+        ms_spread_mult = 1.0
+        ms_size_mult = 1.0
+        ms_metrics = {}
+
+        if self.microstructure:
+            try:
+                ms_analysis = self.microstructure.analyze()
+                ms_spread_mult = ms_analysis['spread_mult']
+                ms_size_mult = ms_analysis['size_mult']
+                ms_metrics = ms_analysis['metrics']
+                
+                if ms_analysis['action'] != 'normal':
+                    self.logger.info(f"🔬 Microstructure: {ms_analysis['action'].upper()} | VPIN={ms_metrics.get('vpin',0):.2f} | ArrivalRatio={ms_metrics.get('arrival_ratio',1):.1f}x")
+                
+            except Exception as e:
+                self.logger.error(f"Microstructure Error: {e}")
+
         # 2. Calculate Parameters
         # Fix Division by Zero: Use calculated qty based on price
         estimated_qty = (self.order_size_usd / mid_price) if mid_price > 0 else self.amount
@@ -747,6 +998,16 @@ class MarketMaker:
         
         # Determine Spread using A&S formula (or legacy)
         final_spread = self._calculate_dynamic_spread()
+        
+        # Apply ML Spread Multiplier
+        # Apply ML Spread Multiplier
+        final_spread *= ml_spread_mult
+        
+        # Apply Order Flow Spread Multiplier (v5.0)
+        final_spread *= of_spread_mult
+        
+        # Apply Microstructure Spread Multiplier (v5.2)
+        final_spread *= ms_spread_mult
         
         # === Adverse Selection Adjustment (Phase 1.2) ===
         if self.as_detector and self.as_spread_add_bps > 0:
@@ -843,15 +1104,40 @@ class MarketMaker:
         layer_spacing = max(final_spread, ml_grid)
         
         # Order Size Multiplier from ML Regime
-        ml_size_mult = getattr(self, '_ml_order_size_mult', 1.0)
+        ml_size_mult_legacy = getattr(self, '_ml_order_size_mult', 1.0)
+        # Combine legacy ML (if any) with v4 ML
+        total_size_mult = ml_size_mult_legacy * ml_size_mult
         
         # Grid Layers: Use ML-adjusted count or fallback to config
         ml_grid_layers = getattr(self, '_ml_grid_layers', self.grid_layers)
 
         for i in range(ml_grid_layers):
-            # Linearly spaced grid
-            bid_p = round_tick_size(target_bid * (1 - (layer_spacing * i)), self.tick_size)
-            ask_p = round_tick_size(target_ask * (1 + (layer_spacing * i)), self.tick_size)
+            # Apply Directional Offset to Layers
+            # UP trend (dir='UP'): bid_layers +1, ask_layers -1 (handled by offsets)
+            # We want to shift the grid: 
+            #   If bid_offset > 0: start bids closer (or add more bids?)
+            #   StrategyV4 implementation: bid_layers bias means we want MORE probability to buy?
+            #   Actually v4 logic: bid_layers = shift. 
+            #   Let's interpret shift as: skewing the grid center.
+            #   But 'market_maker.py' builds grid from mid_price outwards.
+            #   Simplest impl: Adjust spacing or start index?
+            
+            # v4 Logic Interpretation:
+            # bid_layers > 0 means we want to be more aggressive on bids.
+            # We can implement this by shifting the start price for bids/asks.
+            pass # just a comment placeholder
+            
+            # Linearly spaced grid with ML offsets
+            # If bid_offset = 1 (UP trend), we want bids to be closer/more aggressive.
+            #   standard: mid * (1 - spacing * (i+1))
+            #   aggressive: mid * (1 - spacing * i)  <- start at mid!
+            # Let's simply modulate 'i' index.
+            
+            eff_i_bid = max(0, i - ml_bid_offset)
+            eff_i_ask = max(0, i - ml_ask_offset)
+            
+            bid_p = round_tick_size(target_bid * (1 - (layer_spacing * (eff_i_bid + 1))), self.tick_size)
+            ask_p = round_tick_size(target_ask * (1 + (layer_spacing * (eff_i_ask + 1))), self.tick_size)
             
             # === Dynamic Order Sizing (Phase 1.1) ===
             if self.dynamic_sizer and self.order_size_usd > 0:
@@ -868,8 +1154,8 @@ class MarketMaker:
                 )
                 
                 # Apply ML size multiplier
-                bid_size_usd *= ml_size_mult
-                ask_size_usd *= ml_size_mult
+                bid_size_usd *= total_size_mult
+                ask_size_usd *= total_size_mult
                 
                 # Convert to quantity
                 bid_qty = round(bid_size_usd / mid_price, 3)
@@ -881,7 +1167,7 @@ class MarketMaker:
             else:
                 # Fallback: Fixed order size
                 if self.order_size_usd > 0:
-                    adjusted_size_usd = self.order_size_usd * ml_size_mult
+                    adjusted_size_usd = self.order_size_usd * total_size_mult
                     raw_qty = adjusted_size_usd / mid_price
                     qty = round(raw_qty, 3)
                     qty = max(qty, 0.001)
@@ -889,6 +1175,18 @@ class MarketMaker:
                     qty = self.amount
                 bid_qty = qty
                 ask_qty = qty
+            
+            # Apply Order Flow Size Multipliers (v5.0)
+            bid_qty *= of_bid_size_mult
+            ask_qty *= of_ask_size_mult
+            
+            # Apply Funding Rate Size Multipliers (v5.1)
+            bid_qty *= fr_bid_size_mult
+            ask_qty *= fr_ask_size_mult
+            
+            # Re-check minimums
+            bid_qty = max(bid_qty, 0.001)
+            ask_qty = max(ask_qty, 0.001)
             
             if allow_buy:
                 buy_orders.append((bid_p, bid_qty))
@@ -995,6 +1293,8 @@ class MarketMaker:
                 except:
                     pass
             
+            ml_metrics = getattr(self, 'last_ml_metrics', {})
+            
             self.exchange.set_as_metrics({
                 "reservation_price": mid_price,
                 "optimal_spread": final_spread if 'final_spread' in dir() else 0.002,
@@ -1004,7 +1304,18 @@ class MarketMaker:
                 "ml_regime": ml_regime,
                 "recent_pnl": adaptive_metrics.get('recent_pnl', 0),
                 "win_rate": adaptive_metrics.get('win_rate', 50),
-                "adjustments": adaptive_metrics.get('adjustments', 0)
+                "adjustments": adaptive_metrics.get('adjustments', 0),
+                # v4 Metrics
+                "ml_vol_value": ml_metrics.get('vol_value', 0),
+                "ml_confidence": ml_metrics.get('confidence', 0),
+                "ml_spread_mult": ml_metrics.get('spread_mult', 1.0),
+                "ml_spread_mult": ml_metrics.get('spread_mult', 1.0),
+                "ml_size_mult": ml_metrics.get('size_mult', 1.0),
+                # v5 Metrics
+                "of_obi": of_metrics.get('obi', 0.0),
+                "of_toxicity": of_metrics.get('toxicity', 0.0),
+                "ml_direction": ml_metrics.get('direction'),
+                "ml_vol_regime": ml_metrics.get('vol_regime')
             })
         
         # Save status for dashboard (Live mode)
@@ -1020,8 +1331,8 @@ class MarketMaker:
                 equity=status.get('total_equity', 0.0)
             )
             # Also fetch and save trade history for dashboard
-            if hasattr(self.exchange, 'fetch_and_save_trades'):
-                self.exchange.fetch_and_save_trades(self.symbol)
+            # if hasattr(self.exchange, 'fetch_and_save_trades'):
+            #     self.exchange.fetch_and_save_trades(self.symbol)
 
     async def run(self):
         self.logger.info("Strategy Started")

@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-01-27T14:55:55.042320",
+  "data_path": "data/btcusdt_1m_1year.csv",
+  "data_rows": 526000,
+  "hmm_only": {
+    "total_pnl": 8678.84304578547,
+    "sharpe_ratio": 14.553543146189567,
+    "max_drawdown": 0.006771856119754964,
+    "win_rate": 0.6410958904109589,
+    "profit_factor": 1.0819169879276613
+  },
+  "hmm_lgb": {
+    "total_pnl": 8622.599917724157,
+    "sharpe_ratio": 14.767295704156801,
+    "max_drawdown": 0.007262342285938436,
+    "win_rate": 0.6383561643835617,
+    "profit_factor": 1.0823360006776075
+  },
+  "improvement": {
+    "pnl_diff": -56.243128061312746,
+    "sharpe_diff": 0.21375255796723458
+  }
+}

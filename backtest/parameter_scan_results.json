@@ -1,0 +1,1042 @@
+{
+  "timestamp": "2026-02-03T22:48:12.713536",
+  "total_combinations": 84,
+  "top_10": [
+    {
+      "pnl": 1451.15,
+      "trades": 680,
+      "sharpe": 3.95,
+      "max_drawdown_pct": 8.36,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1265.27,
+      "trades": 595,
+      "sharpe": 1.88,
+      "max_drawdown_pct": 0.47,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1244.16,
+      "trades": 660,
+      "sharpe": 2.12,
+      "max_drawdown_pct": 4.61,
+      "params": {
+        "vpin_threshold": 0.7,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1231.63,
+      "trades": 675,
+      "sharpe": 2.02,
+      "max_drawdown_pct": 1.74,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1211.83,
+      "trades": 620,
+      "sharpe": 2.27,
+      "max_drawdown_pct": 7.96,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1210.01,
+      "trades": 610,
+      "sharpe": 2.36,
+      "max_drawdown_pct": 3.97,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1139.96,
+      "trades": 670,
+      "sharpe": 1.07,
+      "max_drawdown_pct": 6.22,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1106.28,
+      "trades": 625,
+      "sharpe": 2.71,
+      "max_drawdown_pct": 2.4,
+      "params": {
+        "vpin_threshold": 0.65,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 1102.86,
+      "trades": 655,
+      "sharpe": 2.18,
+      "max_drawdown_pct": 5.57,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1101.25,
+      "trades": 590,
+      "sharpe": 2.43,
+      "max_drawdown_pct": 4.81,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.6
+      }
+    }
+  ],
+  "all_results": [
+    {
+      "pnl": 1451.15,
+      "trades": 680,
+      "sharpe": 3.95,
+      "max_drawdown_pct": 8.36,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1265.27,
+      "trades": 595,
+      "sharpe": 1.88,
+      "max_drawdown_pct": 0.47,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1244.16,
+      "trades": 660,
+      "sharpe": 2.12,
+      "max_drawdown_pct": 4.61,
+      "params": {
+        "vpin_threshold": 0.7,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1231.63,
+      "trades": 675,
+      "sharpe": 2.02,
+      "max_drawdown_pct": 1.74,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1211.83,
+      "trades": 620,
+      "sharpe": 2.27,
+      "max_drawdown_pct": 7.96,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1210.01,
+      "trades": 610,
+      "sharpe": 2.36,
+      "max_drawdown_pct": 3.97,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1139.96,
+      "trades": 670,
+      "sharpe": 1.07,
+      "max_drawdown_pct": 6.22,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1106.28,
+      "trades": 625,
+      "sharpe": 2.71,
+      "max_drawdown_pct": 2.4,
+      "params": {
+        "vpin_threshold": 0.65,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 1102.86,
+      "trades": 655,
+      "sharpe": 2.18,
+      "max_drawdown_pct": 5.57,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1101.25,
+      "trades": 590,
+      "sharpe": 2.43,
+      "max_drawdown_pct": 4.81,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1100.86,
+      "trades": 650,
+      "sharpe": 1.76,
+      "max_drawdown_pct": 1.01,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1090.15,
+      "trades": 660,
+      "sharpe": 2.94,
+      "max_drawdown_pct": 2.62,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1080.57,
+      "trades": 495,
+      "sharpe": 2.8,
+      "max_drawdown_pct": 4.48,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 1080.41,
+      "trades": 570,
+      "sharpe": 2.5,
+      "max_drawdown_pct": 2.51,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 1075.45,
+      "trades": 635,
+      "sharpe": 1.99,
+      "max_drawdown_pct": 13.13,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 1074.12,
+      "trades": 630,
+      "sharpe": 2.3,
+      "max_drawdown_pct": 9.27,
+      "params": {
+        "vpin_threshold": 0.8,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1073.91,
+      "trades": 630,
+      "sharpe": 2.6,
+      "max_drawdown_pct": 7.42,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 1066.94,
+      "trades": 580,
+      "sharpe": 2.07,
+      "max_drawdown_pct": 0.29,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 1066.53,
+      "trades": 615,
+      "sharpe": 1.9,
+      "max_drawdown_pct": 1.02,
+      "params": {
+        "vpin_threshold": 0.75,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 1062.87,
+      "trades": 665,
+      "sharpe": 1.91,
+      "max_drawdown_pct": 7.61,
+      "params": {
+        "vpin_threshold": 0.65,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1059.96,
+      "trades": 640,
+      "sharpe": 2.18,
+      "max_drawdown_pct": 7.51,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 1058.05,
+      "trades": 605,
+      "sharpe": 2.41,
+      "max_drawdown_pct": 12.13,
+      "params": {
+        "vpin_threshold": 0.65,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1053.54,
+      "trades": 610,
+      "sharpe": 2.66,
+      "max_drawdown_pct": 1.02,
+      "params": {
+        "vpin_threshold": 0.8,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 1047.8,
+      "trades": 580,
+      "sharpe": 2.17,
+      "max_drawdown_pct": 4.99,
+      "params": {
+        "vpin_threshold": 0.7,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1045.51,
+      "trades": 600,
+      "sharpe": 2.52,
+      "max_drawdown_pct": 5.52,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1042.35,
+      "trades": 650,
+      "sharpe": 2.71,
+      "max_drawdown_pct": 3.69,
+      "params": {
+        "vpin_threshold": 0.8,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1041.97,
+      "trades": 540,
+      "sharpe": 1.55,
+      "max_drawdown_pct": 2.71,
+      "params": {
+        "vpin_threshold": 0.7,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1041.66,
+      "trades": 545,
+      "sharpe": 1.55,
+      "max_drawdown_pct": 2.33,
+      "params": {
+        "vpin_threshold": 0.65,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1031.75,
+      "trades": 655,
+      "sharpe": 1.66,
+      "max_drawdown_pct": 12.52,
+      "params": {
+        "vpin_threshold": 0.75,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1031.2,
+      "trades": 635,
+      "sharpe": 1.97,
+      "max_drawdown_pct": 3.53,
+      "params": {
+        "vpin_threshold": 0.75,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1027.23,
+      "trades": 560,
+      "sharpe": 1.93,
+      "max_drawdown_pct": 0.56,
+      "params": {
+        "vpin_threshold": 0.7,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1022.26,
+      "trades": 540,
+      "sharpe": 2.17,
+      "max_drawdown_pct": 2.75,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 1021.0,
+      "trades": 640,
+      "sharpe": 1.96,
+      "max_drawdown_pct": 4.67,
+      "params": {
+        "vpin_threshold": 0.7,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 1020.68,
+      "trades": 575,
+      "sharpe": 1.41,
+      "max_drawdown_pct": 8.4,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 1005.29,
+      "trades": 645,
+      "sharpe": 2.0,
+      "max_drawdown_pct": 5.22,
+      "params": {
+        "vpin_threshold": 0.65,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 992.58,
+      "trades": 555,
+      "sharpe": 1.49,
+      "max_drawdown_pct": 1.05,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 990.55,
+      "trades": 570,
+      "sharpe": 2.5,
+      "max_drawdown_pct": 4.18,
+      "params": {
+        "vpin_threshold": 0.8,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 986.41,
+      "trades": 570,
+      "sharpe": 2.08,
+      "max_drawdown_pct": 0.34,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 969.92,
+      "trades": 550,
+      "sharpe": 1.78,
+      "max_drawdown_pct": 1.52,
+      "params": {
+        "vpin_threshold": 0.8,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 960.08,
+      "trades": 575,
+      "sharpe": 1.43,
+      "max_drawdown_pct": 2.04,
+      "params": {
+        "vpin_threshold": 0.75,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 952.1,
+      "trades": 535,
+      "sharpe": 2.62,
+      "max_drawdown_pct": 1.76,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 939.57,
+      "trades": 500,
+      "sharpe": 2.14,
+      "max_drawdown_pct": 14.62,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 936.38,
+      "trades": 535,
+      "sharpe": 1.8,
+      "max_drawdown_pct": 4.18,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 934.85,
+      "trades": 535,
+      "sharpe": 2.35,
+      "max_drawdown_pct": 1.13,
+      "params": {
+        "vpin_threshold": 0.75,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 934.55,
+      "trades": 580,
+      "sharpe": 2.59,
+      "max_drawdown_pct": 0.51,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 933.1,
+      "trades": 510,
+      "sharpe": 1.93,
+      "max_drawdown_pct": 1.58,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 932.04,
+      "trades": 515,
+      "sharpe": 2.41,
+      "max_drawdown_pct": 9.2,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 929.66,
+      "trades": 565,
+      "sharpe": 1.91,
+      "max_drawdown_pct": 3.9,
+      "params": {
+        "vpin_threshold": 0.65,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 918.99,
+      "trades": 590,
+      "sharpe": 1.19,
+      "max_drawdown_pct": 7.01,
+      "params": {
+        "vpin_threshold": 0.8,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 900.37,
+      "trades": 550,
+      "sharpe": 1.33,
+      "max_drawdown_pct": 1.7,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 886.71,
+      "trades": 490,
+      "sharpe": 0.74,
+      "max_drawdown_pct": 5.78,
+      "params": {
+        "vpin_threshold": 0.8,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 884.05,
+      "trades": 490,
+      "sharpe": 2.25,
+      "max_drawdown_pct": 1.19,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 882.63,
+      "trades": 575,
+      "sharpe": 1.31,
+      "max_drawdown_pct": 6.32,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 879.54,
+      "trades": 565,
+      "sharpe": 2.07,
+      "max_drawdown_pct": 6.34,
+      "params": {
+        "vpin_threshold": 0.65,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 875.95,
+      "trades": 615,
+      "sharpe": 1.57,
+      "max_drawdown_pct": 8.94,
+      "params": {
+        "vpin_threshold": 0.55,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 873.29,
+      "trades": 530,
+      "sharpe": 2.35,
+      "max_drawdown_pct": 3.76,
+      "params": {
+        "vpin_threshold": 0.8,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 859.36,
+      "trades": 520,
+      "sharpe": 2.1,
+      "max_drawdown_pct": 2.91,
+      "params": {
+        "vpin_threshold": 0.7,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 859.06,
+      "trades": 510,
+      "sharpe": 1.6,
+      "max_drawdown_pct": 5.48,
+      "params": {
+        "vpin_threshold": 0.8,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 854.64,
+      "trades": 620,
+      "sharpe": 2.16,
+      "max_drawdown_pct": 5.27,
+      "params": {
+        "vpin_threshold": 0.7,
+        "defensive_risk_score": 1.5,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 853.57,
+      "trades": 595,
+      "sharpe": 2.32,
+      "max_drawdown_pct": 0.33,
+      "params": {
+        "vpin_threshold": 0.75,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 844.77,
+      "trades": 520,
+      "sharpe": 1.45,
+      "max_drawdown_pct": 1.01,
+      "params": {
+        "vpin_threshold": 0.7,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 842.8,
+      "trades": 585,
+      "sharpe": 1.84,
+      "max_drawdown_pct": 0.55,
+      "params": {
+        "vpin_threshold": 0.65,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 840.18,
+      "trades": 495,
+      "sharpe": 0.98,
+      "max_drawdown_pct": 7.38,
+      "params": {
+        "vpin_threshold": 0.75,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 837.53,
+      "trades": 515,
+      "sharpe": 2.56,
+      "max_drawdown_pct": 3.84,
+      "params": {
+        "vpin_threshold": 0.75,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 831.48,
+      "trades": 525,
+      "sharpe": 2.07,
+      "max_drawdown_pct": 6.31,
+      "params": {
+        "vpin_threshold": 0.65,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 827.18,
+      "trades": 520,
+      "sharpe": 1.09,
+      "max_drawdown_pct": 1.4,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 824.46,
+      "trades": 515,
+      "sharpe": 2.09,
+      "max_drawdown_pct": 0.52,
+      "params": {
+        "vpin_threshold": 0.75,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 807.74,
+      "trades": 540,
+      "sharpe": 1.47,
+      "max_drawdown_pct": 6.58,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 806.22,
+      "trades": 560,
+      "sharpe": 0.2,
+      "max_drawdown_pct": 4.4,
+      "params": {
+        "vpin_threshold": 0.5,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 802.64,
+      "trades": 505,
+      "sharpe": 1.52,
+      "max_drawdown_pct": 1.55,
+      "params": {
+        "vpin_threshold": 0.65,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 798.83,
+      "trades": 500,
+      "sharpe": 2.71,
+      "max_drawdown_pct": 7.57,
+      "params": {
+        "vpin_threshold": 0.7,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.6
+      }
+    },
+    {
+      "pnl": 793.89,
+      "trades": 530,
+      "sharpe": 1.2,
+      "max_drawdown_pct": 1.99,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 792.64,
+      "trades": 530,
+      "sharpe": 1.67,
+      "max_drawdown_pct": 2.24,
+      "params": {
+        "vpin_threshold": 0.6,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 790.56,
+      "trades": 485,
+      "sharpe": 2.07,
+      "max_drawdown_pct": 3.37,
+      "params": {
+        "vpin_threshold": 0.65,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 770.25,
+      "trades": 470,
+      "sharpe": 1.21,
+      "max_drawdown_pct": 7.15,
+      "params": {
+        "vpin_threshold": 0.8,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 769.86,
+      "trades": 525,
+      "sharpe": 1.31,
+      "max_drawdown_pct": 10.08,
+      "params": {
+        "vpin_threshold": 0.65,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 759.81,
+      "trades": 600,
+      "sharpe": 1.84,
+      "max_drawdown_pct": 1.83,
+      "params": {
+        "vpin_threshold": 0.7,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 757.39,
+      "trades": 555,
+      "sharpe": 1.06,
+      "max_drawdown_pct": 4.89,
+      "params": {
+        "vpin_threshold": 0.75,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.8
+      }
+    },
+    {
+      "pnl": 739.71,
+      "trades": 560,
+      "sharpe": 1.13,
+      "max_drawdown_pct": 5.12,
+      "params": {
+        "vpin_threshold": 0.7,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 729.45,
+      "trades": 555,
+      "sharpe": 0.98,
+      "max_drawdown_pct": 0.56,
+      "params": {
+        "vpin_threshold": 0.75,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 702.3,
+      "trades": 480,
+      "sharpe": 1.75,
+      "max_drawdown_pct": 0.88,
+      "params": {
+        "vpin_threshold": 0.7,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 687.8,
+      "trades": 510,
+      "sharpe": 0.44,
+      "max_drawdown_pct": 8.68,
+      "params": {
+        "vpin_threshold": 0.8,
+        "defensive_risk_score": 1.0,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 680.45,
+      "trades": 475,
+      "sharpe": 1.95,
+      "max_drawdown_pct": 5.53,
+      "params": {
+        "vpin_threshold": 0.75,
+        "defensive_risk_score": 0.8,
+        "cautious_risk_score": 0.4
+      }
+    },
+    {
+      "pnl": 624.6,
+      "trades": 550,
+      "sharpe": 0.33,
+      "max_drawdown_pct": 1.46,
+      "params": {
+        "vpin_threshold": 0.8,
+        "defensive_risk_score": 1.2,
+        "cautious_risk_score": 0.4
+      }
+    }
+  ]
+}

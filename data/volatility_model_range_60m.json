@@ -1,0 +1,53 @@
+{
+  "target": "range_60m",
+  "version": "20260127_153138",
+  "metrics": {
+    "rmse": 0.36994587662801054,
+    "mae": 0.22912056139130982,
+    "r2": 0.44396441541992826,
+    "direction_accuracy": 0.5168439830084316,
+    "regime_accuracy": 0.7781884448551115
+  },
+  "top_features": [
+    {
+      "feature": "volatility_60",
+      "importance": 198895.56693553925
+    },
+    {
+      "feature": "atr",
+      "importance": 57343.71096992493
+    },
+    {
+      "feature": "volatility_20",
+      "importance": 42717.51611614227
+    },
+    {
+      "feature": "high_low_range",
+      "importance": 15968.51809835434
+    },
+    {
+      "feature": "hour_cos",
+      "importance": 9791.46192741394
+    },
+    {
+      "feature": "minutes_to_funding",
+      "importance": 9476.772839069366
+    },
+    {
+      "feature": "dow_sin",
+      "importance": 7556.871196746826
+    },
+    {
+      "feature": "hour_sin",
+      "importance": 6747.58357334137
+    },
+    {
+      "feature": "bb_width",
+      "importance": 2900.619782447815
+    },
+    {
+      "feature": "dow_cos",
+      "importance": 2205.1819067001343
+    }
+  ]
+}

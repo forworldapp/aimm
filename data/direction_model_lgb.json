@@ -1,0 +1,19 @@
+{
+  "version": "20260127_135242",
+  "accuracy": 0.5833237094352697,
+  "f1_score": 0.628215479085377,
+  "n_features": 27,
+  "train_size": 441605,
+  "best_params": {
+    "num_leaves": 98,
+    "max_depth": 10,
+    "learning_rate": 0.08699593128513321,
+    "n_estimators": 458,
+    "min_data_in_leaf": 140,
+    "feature_fraction": 0.8765622705069351,
+    "bagging_fraction": 0.6265477506155759,
+    "bagging_freq": 2,
+    "lambda_l1": 2.5529693461039728e-08,
+    "lambda_l2": 8.471746987003668e-06
+  }
+}

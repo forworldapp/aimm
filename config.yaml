@@ -5,7 +5,7 @@ exchange:
 risk:
   inventory_skew_factor: 0.005
   max_drawdown_pct: 0.05
-  max_loss_usd: 350.0      # Circuit breaker: Based on 12-month analysis (max $327)
+  max_loss_usd: 200.0      # Circuit breaker: "Golden Zone" (Optimized for 10/2025 Crash)
   max_position_usd: 5000.0
 strategy:
   bollinger:
@@ -67,3 +67,113 @@ strategy:
 
 
 
+
+# v5.0 Order Flow Analysis
+order_flow_analysis:
+  enabled: true
+  
+  # Order Book Imbalance (OBI)
+  obi:
+    levels: 5
+    threshold: 0.3    # Trigger adjustment if abs(OBI) > 0.3
+  
+  # Trade Flow Toxicity
+  toxicity:
+    window: 100
+    threshold: 0.6    # Trigger defensive mode if Toxicity > 0.6
+  
+  # Adjustments
+  adjustment:
+    max_spread_multiplier: 2.0
+    min_size_multiplier: 0.1
+
+# v5.1 Funding Rate Arbitrage
+funding_rate_arbitrage:
+  enabled: true
+  
+  # Monitoring config
+  monitoring:
+    threshold_high: 0.0001   # 0.01% = ~8.76% annual
+    threshold_low: -0.0001
+    min_yield_annual: 5.0    # Minimum 5% annual yield
+  
+  # Integration config
+  integration:
+    funding_weight: 0.3       # Adjustment strength
+    max_inventory_skew: 0.5   # Max inventory bias
+    freeze_before_minutes: 30 # Freeze orders before funding
+
+# v5.2 Microstructure Signals [RE-ENABLED with Week 1 tuning]
+microstructure_signals:
+  enabled: true  # Re-enabled with adaptive tuning
+  use_adaptive_vpin: true  # Use AdaptiveVPIN class
+  
+  # Kill Switch - Auto-disable if PnL drops below threshold
+  kill_switch:
+    enabled: true
+    max_loss_usd: 200
+    check_interval_minutes: 60
+  
+  # VPIN settings
+  vpin:
+    bucket_size_usd: 10000
+    n_buckets: 50
+    threshold: 0.50           # Rank 1 optimal (was 0.65)
+    base_threshold: 0.50      # For AdaptiveVPIN
+    max_threshold: 0.80       # Upper limit for adaptive
+    min_threshold: 0.40       # Lower limit for adaptive
+    volatility_adjustment: 0.10
+    volume_adjustment: 0.10
+    trend_adjustment: 0.05
+  
+  # Trade Arrival Rate
+  trade_arrival:
+    baseline_window_seconds: 3600
+    elevated_threshold: 2.0
+  
+  # Volume Clock
+  volume_clock:
+    volume_per_tick_usd: 50000
+  
+  # Integration thresholds (Rank 1 optimal)
+  defensive_risk_score: 1.5   # Rank 1
+  cautious_risk_score: 0.8    # Rank 1
+
+# v5.3 Cross-Asset Hedging [DISABLED - PnL -$5,406]
+cross_asset_hedge:
+  enabled: false  # Rollback: simulation issues
+  
+  # Correlation settings
+  correlation:
+    window_minutes: 1440  # 1 day rolling window
+    min_correlation: 0.7  # Minimum correlation for hedging
+  
+  # Hedge settings
+  hedge:
+    ratio_beta: 0.8          # 80% of calculated hedge
+    min_position_usd: 100    # Minimum position to create
+    rebalance_threshold: 0.1 # 10% position change
+
+# v5.4 Execution Algorithms
+execution_algo:
+  enabled: true
+  
+  # TWAP settings
+  twap:
+    slice_interval_seconds: 60
+    participation_rate: 0.1
+  
+  # VWAP settings
+  vwap:
+    adapt_to_volume: true
+  
+  # Adaptive settings
+  adaptive:
+    volatility_threshold: 0.02
+    spread_threshold: 0.003
+
+# v6.0 RL Agent
+rl_agent:
+  enabled: false  # Enable after validating model
+  model_path: "models/mm_ppo_50k"
+  use_deterministic: true

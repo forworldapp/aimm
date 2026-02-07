@@ -789,8 +789,18 @@ class MarketMaker:
         current_pos_qty = position.get('amount', 0.0)
         self.inventory = current_pos_qty
         
-        # --- Circuit Breaker Check ---
+        # --- Circuit Breaker Check (with Auto-Reset) ---
         unrealized_pnl = position.get('unrealizedPnL', 0.0)
+        
+        # Check if auto-reset period has passed
+        auto_reset_hours = Config.get("risk", "auto_reset_hours", 0)
+        if hasattr(self, '_circuit_breaker_triggered_at') and auto_reset_hours > 0:
+            hours_since_trigger = (time.time() - self._circuit_breaker_triggered_at) / 3600
+            if hours_since_trigger >= auto_reset_hours:
+                self.logger.info(f"🔄 Circuit Breaker AUTO-RESET after {hours_since_trigger:.1f} hours")
+                self._circuit_breaker_triggered_at = None
+                self.initial_equity = None  # Reset equity baseline
+        
         if unrealized_pnl < -self.max_loss_usd:
             self.logger.critical(f"🚨 CIRCUIT BREAKER: Loss ${abs(unrealized_pnl):.2f} exceeds max ${self.max_loss_usd:.2f}")
             self.logger.critical("Cancelling all orders and LIQUIDATING position!")
@@ -801,7 +811,10 @@ class MarketMaker:
             # 2. Liquidate Position (Market Close)
             await self.exchange.close_position(self.symbol)
             
-            # 3. Stop Logic
+            # 3. Record trigger time for auto-reset
+            self._circuit_breaker_triggered_at = time.time()
+            
+            # 4. Stop Logic
             self.is_active = False
             return
         

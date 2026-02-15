@@ -227,6 +227,11 @@ class MarketMaker:
                 self.notifier = TelegramNotifier(tg_config)
                 self.logger.info("📱 Telegram Notifications Enabled")
         
+        # Telegram state tracking
+        self._prev_position_qty = 0.0  # Track position changes
+        self._daily_pnl_last_date = None  # Daily PnL dedup
+        self._bot_start_notified = False  # Send start alert once
+        
     def _load_params(self):
         """Load strategy parameters from config.yaml"""
         Config.load("config.yaml") # Force reload
@@ -1373,12 +1378,92 @@ class MarketMaker:
             )
             # Also fetch and save trade history for dashboard (bot trades only)
             if hasattr(self.exchange, 'fetch_and_save_trades'):
+                old_trade_count = self.exchange._get_trade_count(self.symbol) if hasattr(self.exchange, '_get_trade_count') else 0
                 self.exchange.fetch_and_save_trades(self.symbol)
+            
+            # --- Telegram Notifications ---
+            if self.notifier:
+                current_pos_qty = position.get('amount', 0.0)
+                equity_val = status.get('total_equity', 0.0)
+                
+                # 1. Fill notification (when new trades are recorded)
+                new_trade_count = self.exchange._get_trade_count(self.symbol) if hasattr(self.exchange, '_get_trade_count') else 0
+                if hasattr(self.exchange, '_last_fill_info') and self.exchange._last_fill_info:
+                    fill = self.exchange._last_fill_info
+                    try:
+                        await self.notifier.alert_fill(
+                            side=fill['side'],
+                            price=fill['price'],
+                            size=fill['size'],
+                            grid_profit=fill.get('grid_profit', 0),
+                            position=current_pos_qty
+                        )
+                    except Exception as e:
+                        self.logger.info(f"Fill alert failed: {e}")
+                    self.exchange._last_fill_info = None
+                
+                # 2. Position change notification
+                if current_pos_qty != self._prev_position_qty:
+                    try:
+                        await self.notifier.alert_position_change(
+                            old_pos=self._prev_position_qty,
+                            new_pos=current_pos_qty,
+                            price=mid_price,
+                            unrealized_pnl=position.get('unrealizedPnL', 0)
+                        )
+                    except Exception as e:
+                        self.logger.info(f"Position alert failed: {e}")
+                    self._prev_position_qty = current_pos_qty
+                
+                # 3. Daily PnL report (at midnight UTC or local)
+                from datetime import datetime
+                today = datetime.now().strftime('%Y-%m-%d')
+                current_hour = datetime.now().hour
+                if current_hour == 0 and self._daily_pnl_last_date != today:
+                    import csv, os
+                    trade_file = os.path.join("data", f"trade_history_{self.symbol.replace('/', '_')}.csv")
+                    trade_count = 0
+                    daily_pnl = 0.0
+                    if os.path.exists(trade_file):
+                        try:
+                            with open(trade_file, 'r') as f:
+                                reader = csv.DictReader(f)
+                                for row in reader:
+                                    trade_count += 1
+                                    daily_pnl += float(row.get('grid_profit', 0))
+                        except Exception:
+                            pass
+                    try:
+                        await self.notifier.alert_daily_pnl(
+                            pnl=daily_pnl,
+                            balance=equity_val,
+                            trades=trade_count,
+                            position=current_pos_qty,
+                            price=mid_price
+                        )
+                    except Exception as e:
+                        self.logger.info(f"Daily PnL alert failed: {e}")
+                    self._daily_pnl_last_date = today
 
     async def run(self):
         self.logger.info("Strategy Started")
         self.is_running = True
         self.is_active = True # Force Auto-Start
+        
+        # Send bot start notification
+        if self.notifier and not self._bot_start_notified:
+            try:
+                mode = 'live' if hasattr(self.exchange, 'trading_account_id') else 'paper'
+                await self.notifier.alert_bot_start(
+                    symbol=self.symbol,
+                    balance=0,
+                    mode=mode
+                )
+                self._bot_start_notified = True
+                self.logger.info("📱 Bot start alert sent to Telegram")
+            except Exception as e:
+                self.logger.error(f"Bot start alert failed: {e}")
+        
         while self.is_running:
             try:
                 cmd_res = await self.check_command()
@@ -1397,4 +1482,11 @@ class MarketMaker:
                 self.logger.error(f"Error in strategy cycle: {e}")
             
             await asyncio.sleep(self.refresh_interval)
+        
+        # Send bot stop notification
+        if self.notifier:
+            try:
+                await self.notifier.alert_bot_stop(reason="Normal shutdown")
+            except Exception:
+                pass
         return 'stop'

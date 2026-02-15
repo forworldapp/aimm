@@ -171,6 +171,51 @@ class TelegramNotifier:
         )
         await self.send(msg)
 
+    async def alert_fill(self, side: str, price: float, size: float,
+                         grid_profit: float = 0, position: float = 0):
+        """Alert when a bot order is filled."""
+        if not self.alerts.get('fills', True):
+            return
+        emoji = "🟢" if side == 'buy' else "🔴"
+        profit_str = ""
+        if grid_profit != 0:
+            p_emoji = "💰" if grid_profit > 0 else "💸"
+            profit_str = f"\n{p_emoji} Grid P/L: <code>${grid_profit:+.4f}</code>"
+        msg = (
+            f"{emoji} <b>Fill: {side.upper()}</b>\n"
+            f"Price: <code>${price:,.2f}</code>\n"
+            f"Size: <code>{size:.4f} BTC</code>\n"
+            f"Value: <code>${price * size:,.2f}</code>"
+            f"{profit_str}\n"
+            f"Position: <code>{position:.4f} BTC</code>\n"
+            f"Time: {datetime.now().strftime('%H:%M:%S')}"
+        )
+        await self.send(msg)
+
+    async def alert_position_change(self, old_pos: float, new_pos: float,
+                                     price: float, unrealized_pnl: float = 0):
+        """Alert when position changes significantly."""
+        if not self.alerts.get('position_change', True):
+            return
+        if old_pos == 0 and new_pos == 0:
+            return
+        if old_pos == 0:
+            action = "📥 Position Opened"
+        elif new_pos == 0:
+            action = "📤 Position Closed"
+        else:
+            action = "🔄 Position Changed"
+        side_str = "LONG" if new_pos > 0 else "SHORT" if new_pos < 0 else "FLAT"
+        msg = (
+            f"<b>{action}</b>\n"
+            f"Before: <code>{old_pos:.4f} BTC</code>\n"
+            f"After: <code>{new_pos:.4f} BTC</code> ({side_str})\n"
+            f"Price: <code>${price:,.2f}</code>\n"
+            f"Unrealized P/L: <code>${unrealized_pnl:+.2f}</code>\n"
+            f"Time: {datetime.now().strftime('%H:%M:%S')}"
+        )
+        await self.send(msg)
+
     async def alert_custom(self, title: str, message: str):
         """Send custom alert."""
         msg = f"📢 <b>{title}</b>\n{message}"

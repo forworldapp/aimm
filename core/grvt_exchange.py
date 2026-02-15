@@ -34,6 +34,7 @@ class GrvtExchange(ExchangeInterface):
         self.trading_account_id = os.environ.get('GRVT_TRADING_ACCOUNT_ID')
         self.exchange = None
         self._bot_order_ids = set()  # Track order IDs placed by this bot
+        self._last_fill_info = None  # Last fill info for Telegram notification
         
         if GrvtCcxt is None:
             self.logger.error("grvt-pysdk not installed. Please install it via pip.")
@@ -364,6 +365,13 @@ class GrvtExchange(ExchangeInterface):
                     round(grid_profit, 4),
                     f"Fill {trade_id[:12]}"
                 ])
+                # Store last fill for Telegram notification
+                self._last_fill_info = {
+                    'side': side,
+                    'price': price,
+                    'size': size,
+                    'grid_profit': grid_profit
+                }
                 existing_ids.add(trade_id)
             
             if new_rows:
@@ -379,3 +387,15 @@ class GrvtExchange(ExchangeInterface):
                 
         except Exception as e:
             self.logger.warning(f"Failed to fetch trades: {e}")
+
+    def _get_trade_count(self, symbol: str) -> int:
+        """Get count of recorded bot trades."""
+        import os, csv
+        trade_file = os.path.join("data", f"trade_history_{symbol.replace('/', '_')}.csv")
+        if not os.path.exists(trade_file):
+            return 0
+        try:
+            with open(trade_file, 'r') as f:
+                return sum(1 for _ in csv.DictReader(f))
+        except Exception:
+            return 0

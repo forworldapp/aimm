@@ -181,9 +181,9 @@ rl_agent:
 
 # Telegram Notifications
 telegram:
-  enabled: false  # Set to true after adding bot_token and chat_id
-  bot_token: ""   # Get from @BotFather on Telegram
-  chat_id: ""     # Get from @userinfobot on Telegram
+  enabled: true
+  bot_token: "env:TELEGRAM_BOT_TOKEN"  # Loaded from .env file
+  chat_id: "env:TELEGRAM_CHAT_ID"      # Loaded from .env file
   alerts:
     circuit_breaker: true
     daily_pnl: true

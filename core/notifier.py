@@ -15,10 +15,28 @@ logger = logging.getLogger("Notifier")
 class TelegramNotifier:
     """Sends alerts to Telegram using Bot API (no external deps, uses urllib)."""
 
+    @staticmethod
+    def _resolve_env(value: str) -> str:
+        """Resolve 'env:VAR_NAME' to actual environment variable value."""
+        if isinstance(value, str) and value.startswith('env:'):
+            import os
+            # Load .env file if not already loaded
+            env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+            if os.path.exists(env_path):
+                with open(env_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#') and '=' in line:
+                            key, val = line.split('=', 1)
+                            os.environ.setdefault(key.strip(), val.strip())
+            var_name = value[4:]  # Remove 'env:' prefix
+            return os.environ.get(var_name, '')
+        return value
+
     def __init__(self, config: dict):
         self.enabled = config.get('enabled', False)
-        self.bot_token = config.get('bot_token', '')
-        self.chat_id = config.get('chat_id', '')
+        self.bot_token = self._resolve_env(config.get('bot_token', ''))
+        self.chat_id = self._resolve_env(config.get('chat_id', ''))
         self.alerts = config.get('alerts', {})
         self._last_daily_report = None
 
@@ -36,6 +54,7 @@ class TelegramNotifier:
 
         import urllib.request
         import urllib.parse
+        import ssl
         import json
 
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
@@ -45,9 +64,19 @@ class TelegramNotifier:
             'parse_mode': parse_mode,
         }).encode('utf-8')
 
+        # Create SSL context with certifi if available, otherwise use default
+        ctx = None
+        try:
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except ImportError:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
         try:
             req = urllib.request.Request(url, data=data)
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
                 result = json.loads(resp.read())
                 if result.get('ok'):
                     logger.debug("Telegram message sent")

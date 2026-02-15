@@ -178,3 +178,15 @@ rl_agent:
   enabled: false  # Enable after validating model
   model_path: "models/mm_ppo_50k"
   use_deterministic: true
+
+# Telegram Notifications
+telegram:
+  enabled: false  # Set to true after adding bot_token and chat_id
+  bot_token: ""   # Get from @BotFather on Telegram
+  chat_id: ""     # Get from @userinfobot on Telegram
+  alerts:
+    circuit_breaker: true
+    daily_pnl: true
+    kill_switch: true
+    bot_start: true
+    bot_stop: true

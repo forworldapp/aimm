@@ -121,6 +121,14 @@ except ImportError:
     EXECUTION_AVAILABLE = False
     ExecutionIntegrator = None
 
+# Telegram Notifications
+try:
+    from core.notifier import TelegramNotifier
+    NOTIFIER_AVAILABLE = True
+except ImportError:
+    NOTIFIER_AVAILABLE = False
+    TelegramNotifier = None
+
 
 def round_tick_size(price, tick_size):
     return round(price / tick_size) * tick_size
@@ -210,6 +218,14 @@ class MarketMaker:
             exec_config = Config.get_section("execution_algo")
             self.execution = ExecutionIntegrator(exec_config)
             self.logger.info("⚡ Execution Algorithms Enabled")
+        
+        # Telegram Notifications
+        self.notifier = None
+        if NOTIFIER_AVAILABLE:
+            tg_config = Config.get_section("telegram") or {}
+            if tg_config.get('enabled', False):
+                self.notifier = TelegramNotifier(tg_config)
+                self.logger.info("📱 Telegram Notifications Enabled")
         
     def _load_params(self):
         """Load strategy parameters from config.yaml"""
@@ -814,7 +830,19 @@ class MarketMaker:
             # 3. Record trigger time for auto-reset
             self._circuit_breaker_triggered_at = time.time()
             
-            # 4. Stop Logic
+            # 4. Send Telegram Alert
+            if self.notifier:
+                try:
+                    await self.notifier.alert_circuit_breaker(
+                        loss=unrealized_pnl,
+                        max_loss=self.max_loss_usd,
+                        position=current_pos_qty,
+                        price=mid_price
+                    )
+                except Exception as e:
+                    self.logger.error(f"Telegram alert failed: {e}")
+            
+            # 5. Stop Logic
             self.is_active = False
             return
         

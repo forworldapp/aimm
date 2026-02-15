@@ -190,7 +190,59 @@ with col_ctrl3:
             json.dump({"command": "shutdown"}, f)
         st.toast("Sent SHUTDOWN command! Bot will exit.", icon="💀")
 
-st.divider()
+# --- Emergency Stop Button ---
+st.markdown(
+    """<style>
+    div[data-testid="stButton"] > button[kind="secondary"]:has(> div > p:contains("EMERGENCY")) {
+        background-color: #dc3545; color: white; font-weight: bold;
+    }
+    </style>""",
+    unsafe_allow_html=True,
+)
+
+col_es1, col_es2 = st.columns([3, 1])
+with col_es1:
+    if st.button("🚨 EMERGENCY STOP — 즉시 청산 + 봇 종료", type="primary", use_container_width=True, key="emergency_stop"):
+        # 1. Send shutdown command
+        with open(command_file, "w") as f:
+            json.dump({"command": "shutdown"}, f)
+        
+        # 2. Clear position in paper status
+        paper_file = os.path.join("data", f"paper_status_{current_symbol}.json")
+        try:
+            if os.path.exists(paper_file):
+                with open(paper_file, "r") as f:
+                    ps = json.load(f)
+                old_pos = ps.get('position', {}).get('amount', 0)
+                ps['position'] = {'amount': 0.0, 'entryPrice': 0.0, 'unrealizedPnL': 0.0}
+                ps['open_orders_list'] = []
+                ps['open_orders'] = 0
+                ps['emergency_stop'] = True
+                with open(paper_file, "w") as f:
+                    json.dump(ps, f)
+        except Exception:
+            pass
+        
+        # 3. Send Telegram alert
+        try:
+            import sys
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from core.config import Config
+            Config.load()
+            tg_config = Config.get_section('telegram') or {}
+            if tg_config.get('enabled'):
+                from core.notifier import TelegramNotifier
+                import asyncio
+                notifier = TelegramNotifier(tg_config)
+                asyncio.run(notifier.alert_bot_stop(reason="🚨 EMERGENCY STOP from Dashboard"))
+        except Exception:
+            pass
+        
+        st.error("🚨 EMERGENCY STOP 실행 완료! 포지션 청산 + 봇 종료됨")
+        st.toast("EMERGENCY STOP executed!", icon="🚨")
+
+with col_es2:
+    st.caption("⚠️ 포지션 즉시 청산\n프로세스 종료\nTelegram 알림 전송")
 
 # --- Status Data Loading with Persistence ---
 # --- Status Data Loading with Persistence ---

@@ -1,6 +1,6 @@
 exchange:
   env: prod
-  mode: paper
+  mode: live
   symbol: BTC_USDT_Perp
 risk:
   inventory_skew_factor: 0.005

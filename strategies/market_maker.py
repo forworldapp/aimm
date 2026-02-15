@@ -1371,9 +1371,9 @@ class MarketMaker:
                 open_orders=open_orders,
                 equity=status.get('total_equity', 0.0)
             )
-            # Also fetch and save trade history for dashboard
-            # if hasattr(self.exchange, 'fetch_and_save_trades'):
-            #     self.exchange.fetch_and_save_trades(self.symbol)
+            # Also fetch and save trade history for dashboard (bot trades only)
+            if hasattr(self.exchange, 'fetch_and_save_trades'):
+                self.exchange.fetch_and_save_trades(self.symbol)
 
     async def run(self):
         self.logger.info("Strategy Started")

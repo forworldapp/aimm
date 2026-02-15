@@ -33,6 +33,7 @@ class GrvtExchange(ExchangeInterface):
         self.private_key = os.environ.get('GRVT_PRIVATE_KEY')
         self.trading_account_id = os.environ.get('GRVT_TRADING_ACCOUNT_ID')
         self.exchange = None
+        self._bot_order_ids = set()  # Track order IDs placed by this bot
         
         if GrvtCcxt is None:
             self.logger.error("grvt-pysdk not installed. Please install it via pip.")
@@ -43,7 +44,7 @@ class GrvtExchange(ExchangeInterface):
         if self.env == 'prod' or self.env == 'mainnet':
             target_env = GrvtEnv.PROD
         
-        # SDK requires ALL credentials in parameters dict
+        # SDK requires numeric sub_account_id for EIP712 signing
         self.exchange = GrvtCcxt(
             env=target_env,
             parameters={
@@ -91,6 +92,8 @@ class GrvtExchange(ExchangeInterface):
                     price=price
                 )
                 order_id = order.get('order_id', order.get('id'))
+                if order_id:
+                    self._bot_order_ids.add(order_id)
                 self.logger.info(f"Order placed: {order_id}")
                 return order_id
             except Exception as e:
@@ -254,7 +257,12 @@ class GrvtExchange(ExchangeInterface):
             self.logger.warning(f"Failed to save live status: {e}")
 
     def fetch_and_save_trades(self, symbol: str):
-        """Fetch recent trades from GRVT and save to trade history CSV with FIFO grid profit."""
+        """Fetch recent trades from GRVT and save ONLY bot-placed trades to history CSV.
+        
+        Filters out manual trades by matching trade's order_id against
+        self._bot_order_ids (orders placed by this bot instance).
+        Uses FIFO matching for grid profit calculation.
+        """
         import csv
         import os
         import time
@@ -264,22 +272,21 @@ class GrvtExchange(ExchangeInterface):
             return
             
         try:
-            # Fetch recent trades
+            # Fetch recent trades for this symbol only
             response = self.exchange.fetch_my_trades(symbol, limit=50)
             if not response:
                 return
             
-            # Response is dict with 'result' key containing list of trades
             trades_list = response.get('result', []) if isinstance(response, dict) else response
             if not trades_list:
                 return
                 
             trade_file = os.path.join("data", f"trade_history_{symbol.replace('/', '_')}.csv")
             
-            # Read existing trades for FIFO matching
+            # Read existing trade IDs to avoid duplicates
             existing_ids = set()
-            buy_queue = deque()  # FIFO queue for buys: [(price, size, trade_id), ...]
-            sell_queue = deque()  # FIFO queue for sells: [(price, size, trade_id), ...]
+            buy_queue = deque()
+            sell_queue = deque()
             
             if os.path.exists(trade_file):
                 with open(trade_file, 'r') as f:
@@ -290,7 +297,6 @@ class GrvtExchange(ExchangeInterface):
                             trade_id = note.replace('Fill ', '')
                             existing_ids.add(trade_id)
                             
-                            # Build FIFO queues from existing trades
                             direction = row.get('direction', '')
                             side = row.get('side', '')
                             if direction == 'increase':
@@ -304,11 +310,18 @@ class GrvtExchange(ExchangeInterface):
             # Sort trades by time (oldest first for correct FIFO)
             trades_list = sorted(trades_list, key=lambda x: x.get('event_time', 0))
             
-            # Process new trades
+            # Process new trades - ONLY those placed by this bot
             new_rows = []
+            skipped_manual = 0
             for trade in trades_list:
-                trade_id = trade.get('trade_id', trade.get('order_id', ''))
+                trade_id = trade.get('trade_id', '')
+                order_id = trade.get('order_id', '')
                 if not trade_id or trade_id in existing_ids:
+                    continue
+                
+                # *** FILTER: Only include trades from bot-placed orders ***
+                if order_id not in self._bot_order_ids:
+                    skipped_manual += 1
                     continue
                     
                 # GRVT trade format
@@ -320,33 +333,27 @@ class GrvtExchange(ExchangeInterface):
                 realized_pnl = float(trade.get('realized_pnl', 0))
                 fee = float(trade.get('fee', 0))
                 
-                # Direction based on realized_pnl
+                # Direction: increase (open) vs reduce (close)
                 direction = 'increase' if realized_pnl == 0 else 'reduce'
                 
-                # Calculate FIFO grid profit
+                # FIFO grid profit calculation
                 grid_profit = 0.0
                 if direction == 'increase':
-                    # Add to queue
                     if side == 'buy':
                         buy_queue.append((price, size, trade_id))
                     else:
                         sell_queue.append((price, size, trade_id))
                 else:
-                    # Match with opposite queue (FIFO)
-                    if side == 'buy':
-                        # Buying to close short - match with oldest sell
-                        if sell_queue:
-                            entry_price, _, _ = sell_queue.popleft()
-                            grid_profit = (entry_price - price) * size  # Short profit
-                    else:
-                        # Selling to close long - match with oldest buy
-                        if buy_queue:
-                            entry_price, _, _ = buy_queue.popleft()
-                            grid_profit = (price - entry_price) * size  # Long profit
+                    if side == 'buy' and sell_queue:
+                        entry_price, _, _ = sell_queue.popleft()
+                        grid_profit = (entry_price - price) * size
+                    elif side == 'sell' and buy_queue:
+                        entry_price, _, _ = buy_queue.popleft()
+                        grid_profit = (price - entry_price) * size
                 
                 new_rows.append([
                     fill_time,
-                    'BTC_USDT_Perp',
+                    symbol.replace('/', '_'),
                     side,
                     direction,
                     price,
@@ -354,12 +361,11 @@ class GrvtExchange(ExchangeInterface):
                     round(price * size, 2),
                     abs(fee),
                     realized_pnl,
-                    round(grid_profit, 4),  # FIFO calculated grid profit
+                    round(grid_profit, 4),
                     f"Fill {trade_id[:12]}"
                 ])
                 existing_ids.add(trade_id)
             
-            # Write new trades
             if new_rows:
                 file_exists = os.path.exists(trade_file) and os.path.getsize(trade_file) > 0
                 with open(trade_file, 'a', newline='') as f:
@@ -367,7 +373,9 @@ class GrvtExchange(ExchangeInterface):
                     if not file_exists:
                         writer.writerow(['timestamp', 'symbol', 'side', 'direction', 'price', 'amount', 'cost', 'rebate', 'realized_pnl', 'grid_profit', 'note'])
                     writer.writerows(new_rows)
-                self.logger.info(f"Saved {len(new_rows)} new trades to history")
+                self.logger.info(f"Saved {len(new_rows)} bot trades (skipped {skipped_manual} manual)")
+            elif skipped_manual > 0:
+                self.logger.debug(f"No new bot trades (skipped {skipped_manual} manual)")
                 
         except Exception as e:
             self.logger.warning(f"Failed to fetch trades: {e}")

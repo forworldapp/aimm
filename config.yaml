@@ -4,7 +4,7 @@ exchange:
   symbol: BTC_USDT_Perp
 risk:
   inventory_skew_factor: 0.005
-  max_drawdown_pct: 0.05
+  max_drawdown_pct: 0.15   # 15% of bot cost basis (bot-only, manual trades excluded)
   max_loss_usd: 300.0      # Circuit breaker limit (increased from $200)
   auto_reset_hours: 24     # Auto-reset after 24 hours
   max_position_usd: 5000.0

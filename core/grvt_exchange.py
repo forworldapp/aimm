@@ -451,3 +451,100 @@ class GrvtExchange(ExchangeInterface):
                 return sum(1 for _ in csv.DictReader(f))
         except Exception:
             return 0
+
+    def get_bot_pnl(self, symbol: str, current_price: float) -> dict:
+        """Calculate bot-only P&L from trade_history CSV.
+        
+        Returns:
+            dict with keys:
+                - bot_net_qty: net position size from bot trades only
+                - bot_avg_entry: weighted average entry price
+                - realized_pnl: sum of grid_profit (closed trades)
+                - unrealized_pnl: (current_price - avg_entry) * net_qty
+                - total_pnl: realized + unrealized
+                - trade_count: number of bot trades
+                - bot_cost_basis: total capital used by bot trades
+        """
+        import os
+        import pandas as pd
+        
+        result = {
+            'bot_net_qty': 0.0,
+            'bot_avg_entry': 0.0,
+            'realized_pnl': 0.0,
+            'unrealized_pnl': 0.0,
+            'total_pnl': 0.0,
+            'trade_count': 0,
+            'bot_cost_basis': 0.0
+        }
+        
+        trade_file = os.path.join("data", f"trade_history_{symbol.replace('/', '_')}.csv")
+        if not os.path.exists(trade_file):
+            return result
+        
+        try:
+            df = pd.read_csv(trade_file)
+            if df.empty:
+                return result
+            
+            result['trade_count'] = len(df)
+            
+            # Realized P&L from grid profits
+            if 'grid_profit' in df.columns:
+                result['realized_pnl'] = round(df['grid_profit'].sum(), 4)
+            
+            # Calculate bot net position and average entry price
+            net_qty = 0.0
+            cost_basis = 0.0  # total cost of current position
+            
+            for _, row in df.iterrows():
+                side = row.get('side', '')
+                price = float(row.get('price', 0))
+                amount = float(row.get('amount', 0))
+                
+                if side == 'buy':
+                    # Adding to long / reducing short
+                    if net_qty >= 0:
+                        # Adding to long: update cost basis
+                        cost_basis += price * amount
+                    else:
+                        # Reducing short
+                        if amount >= abs(net_qty):
+                            # Flipping to long
+                            remaining = amount - abs(net_qty)
+                            cost_basis = price * remaining
+                        else:
+                            # Partially reducing short
+                            cost_basis = cost_basis * (abs(net_qty) - amount) / abs(net_qty) if net_qty != 0 else 0
+                    net_qty += amount
+                elif side == 'sell':
+                    # Adding to short / reducing long
+                    if net_qty <= 0:
+                        # Adding to short: update cost basis
+                        cost_basis += price * amount
+                    else:
+                        # Reducing long
+                        if amount >= net_qty:
+                            # Flipping to short
+                            remaining = amount - net_qty
+                            cost_basis = price * remaining
+                        else:
+                            # Partially reducing long
+                            cost_basis = cost_basis * (net_qty - amount) / net_qty if net_qty != 0 else 0
+                    net_qty -= amount
+            
+            result['bot_net_qty'] = round(net_qty, 6)
+            result['bot_cost_basis'] = round(cost_basis, 2)
+            
+            # Average entry price
+            if net_qty != 0:
+                result['bot_avg_entry'] = round(cost_basis / abs(net_qty), 2)
+                # Unrealized P&L
+                result['unrealized_pnl'] = round((current_price - result['bot_avg_entry']) * net_qty, 4)
+            
+            result['total_pnl'] = round(result['realized_pnl'] + result['unrealized_pnl'], 4)
+            
+            return result
+        except Exception as e:
+            self.logger.warning(f"Failed to calculate bot P&L: {e}")
+            return result

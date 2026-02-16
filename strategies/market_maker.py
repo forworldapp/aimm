@@ -751,29 +751,20 @@ class MarketMaker:
         return final_pct
     
     async def check_drawdown(self):
-        """Check Max Drawdown safety stop."""
+        """Bot-only drawdown check using trade_history CSV.
+        
+        Uses get_bot_pnl() to calculate bot-only P&L (realized + unrealized).
+        Max drawdown is 15% of bot's cost basis.
+        Manual trades are completely excluded.
+        """
         status = await self.exchange.get_account_summary()
         current_equity = status.get('total_equity', 0.0)
         
         if self.initial_equity is None:
             self.initial_equity = current_equity
             self.logger.info(f"Initial Equity Set: {self.initial_equity}")
-            return True
-            
-        # Drawdown check
-        dd_pct = (self.initial_equity - current_equity) / self.initial_equity
-        if dd_pct > self.risk_manager.max_drawdown:
-            self.logger.critical(f"MAX DRAWDOWN REACHED! {dd_pct*100:.2f}% >= {self.risk_manager.max_drawdown*100:.2f}%")
-            self.logger.critical("STOPPING BOT & CLOSING POSITIONS.")
-            
-            # Close all
-            await self.exchange.cancel_all_orders(self.symbol)
-            await self.exchange.close_position(self.symbol)
-            
-            self.is_active = False # Stop Bot
-            return False
-            
-        return True
+        
+        return True  # Drawdown managed in cycle() via bot-only P&L
 
     async def cycle(self):
         # 1. Get Data
@@ -810,46 +801,61 @@ class MarketMaker:
         current_pos_qty = position.get('amount', 0.0)
         self.inventory = current_pos_qty
         
-        # --- Circuit Breaker Check (with Auto-Reset) ---
-        unrealized_pnl = position.get('unrealizedPnL', 0.0)
-        
-        # Check if auto-reset period has passed
-        auto_reset_hours = Config.get("risk", "auto_reset_hours", 0)
-        if hasattr(self, '_circuit_breaker_triggered_at') and auto_reset_hours > 0:
-            hours_since_trigger = (time.time() - self._circuit_breaker_triggered_at) / 3600
-            if hours_since_trigger >= auto_reset_hours:
-                self.logger.info(f"🔄 Circuit Breaker AUTO-RESET after {hours_since_trigger:.1f} hours")
-                self._circuit_breaker_triggered_at = None
-                self.initial_equity = None  # Reset equity baseline
-        
-        if unrealized_pnl < -self.max_loss_usd:
-            self.logger.critical(f"🚨 CIRCUIT BREAKER: Loss ${abs(unrealized_pnl):.2f} exceeds max ${self.max_loss_usd:.2f}")
-            self.logger.critical("Cancelling all orders and LIQUIDATING position!")
+        # --- Bot-Only Risk Management ---
+        # Uses ONLY bot trades from trade_history CSV (realized + unrealized P&L)
+        # Manual trades are completely excluded
+        try:
+            bot_pnl = self.exchange.get_bot_pnl(self.symbol, mid_price)
+            bot_total_pnl = bot_pnl.get('total_pnl', 0.0)
+            bot_cost_basis = bot_pnl.get('bot_cost_basis', 0.0)
             
-            # 1. Cancel Open Orders (Prevent stacking)
-            await self.exchange.cancel_all_orders(self.symbol)
+            # Circuit Breaker: max loss in USD (bot-only)
+            if bot_total_pnl < -self.max_loss_usd:
+                self.logger.critical(f"🚨 BOT CIRCUIT BREAKER: Bot P&L ${bot_total_pnl:.2f} exceeds -${self.max_loss_usd:.2f}")
+                self.logger.critical(f"   Realized: ${bot_pnl['realized_pnl']:.2f}, Unrealized: ${bot_pnl['unrealized_pnl']:.2f}")
+                self.logger.critical("Cancelling BOT orders only (manual positions untouched).")
+                
+                await self.exchange.cancel_all_orders(self.symbol)
+                
+                if self.notifier:
+                    try:
+                        await self.notifier.alert_circuit_breaker(
+                            loss=bot_total_pnl,
+                            max_loss=self.max_loss_usd,
+                            position=bot_pnl.get('bot_net_qty', 0),
+                            price=mid_price
+                        )
+                    except Exception as e:
+                        self.logger.error(f"Telegram alert failed: {e}")
+                
+                self.is_active = False
+                return
             
-            # 2. Liquidate Position (Market Close)
-            await self.exchange.close_position(self.symbol)
-            
-            # 3. Record trigger time for auto-reset
-            self._circuit_breaker_triggered_at = time.time()
-            
-            # 4. Send Telegram Alert
-            if self.notifier:
-                try:
-                    await self.notifier.alert_circuit_breaker(
-                        loss=unrealized_pnl,
-                        max_loss=self.max_loss_usd,
-                        position=current_pos_qty,
-                        price=mid_price
-                    )
-                except Exception as e:
-                    self.logger.error(f"Telegram alert failed: {e}")
-            
-            # 5. Stop Logic
-            self.is_active = False
-            return
+            # Max Drawdown: 15% of bot cost basis
+            if bot_cost_basis > 0 and bot_total_pnl < 0:
+                bot_dd_pct = abs(bot_total_pnl) / bot_cost_basis
+                if bot_dd_pct > self.risk_manager.max_drawdown:
+                    self.logger.critical(f"🚨 BOT MAX DRAWDOWN: {bot_dd_pct*100:.1f}% > {self.risk_manager.max_drawdown*100:.0f}%")
+                    self.logger.critical(f"   Bot P&L: ${bot_total_pnl:.2f} / Cost Basis: ${bot_cost_basis:.2f}")
+                    self.logger.critical("Cancelling BOT orders only.")
+                    
+                    await self.exchange.cancel_all_orders(self.symbol)
+                    
+                    if self.notifier:
+                        try:
+                            await self.notifier.alert_circuit_breaker(
+                                loss=bot_total_pnl,
+                                max_loss=bot_cost_basis * self.risk_manager.max_drawdown,
+                                position=bot_pnl.get('bot_net_qty', 0),
+                                price=mid_price
+                            )
+                        except Exception as e:
+                            self.logger.error(f"Telegram alert failed: {e}")
+                    
+                    self.is_active = False
+                    return
+        except Exception as e:
+            self.logger.debug(f"Bot risk check failed: {e}")
         
         # Log Status
         rsi_status = self.rsi_filter.analyze(self.candles)

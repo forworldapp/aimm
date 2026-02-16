@@ -197,6 +197,58 @@ class GrvtExchange(ExchangeInterface):
         except Exception as e:
             self.logger.error(f"Error cancelling all orders: {e}")
 
+    async def close_position(self, symbol: str):
+        """Close the current position by placing a market order in the opposite direction."""
+        if not self.exchange: return
+        try:
+            position = await self.get_position(symbol)
+            size = position.get('amount', 0.0)
+            if size == 0:
+                self.logger.info(f"No position to close for {symbol}")
+                return
+            
+            # Determine the closing side
+            side = 'sell' if size > 0 else 'buy'
+            abs_size = abs(size)
+            
+            self.logger.info(f"Closing position: {side} {abs_size} {symbol}")
+            
+            # Place market order to close
+            order = self.exchange.create_order(
+                symbol=symbol,
+                order_type='market',
+                side=side,
+                amount=abs_size
+            )
+            order_id = order.get('order_id', order.get('id'))
+            self.logger.info(f"Position closed with market order: {order_id}")
+            return order_id
+        except Exception as e:
+            self.logger.error(f"Market close failed for {symbol}: {e}")
+            # Fallback: try limit order at aggressive price
+            try:
+                position = await self.get_position(symbol)
+                size = position.get('amount', 0.0)
+                if size == 0:
+                    return
+                side = 'sell' if size > 0 else 'buy'
+                abs_size = abs(size)
+                
+                # Get current price and add/subtract 0.5% for aggressive fill
+                ob = await self.get_orderbook(symbol)
+                if side == 'sell' and ob.get('bids'):
+                    price = float(ob['bids'][0][0]) * 0.995
+                elif side == 'buy' and ob.get('asks'):
+                    price = float(ob['asks'][0][0]) * 1.005
+                else:
+                    self.logger.error("Cannot determine closing price")
+                    return
+                
+                self.logger.info(f"Fallback: closing via limit order at {price}")
+                return await self.place_limit_order(symbol, side, price, abs_size)
+            except Exception as e2:
+                self.logger.error(f"Fallback close also failed: {e2}")
+
     def save_live_status(self, symbol: str, mid_price: float, regime: str, 
                          position: Dict, open_orders: List, equity: float):
         """Save current status for dashboard (Live mode equivalent of _save_status)."""

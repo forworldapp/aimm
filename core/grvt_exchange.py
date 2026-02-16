@@ -370,11 +370,21 @@ class GrvtExchange(ExchangeInterface):
                 return
                 
             trade_file = os.path.join("data", f"trade_history_{symbol.replace('/', '_')}.csv")
+            processed_ids_file = os.path.join("data", "processed_trade_ids.json")
             
-            # Read existing trade IDs to avoid duplicates
+            # Read existing trade IDs to avoid duplicates (from CSV + persistent file)
             existing_ids = set()
             buy_queue = deque()
             sell_queue = deque()
+            
+            # Load from persistent processed IDs file
+            try:
+                import json
+                if os.path.exists(processed_ids_file):
+                    with open(processed_ids_file, 'r') as f:
+                        existing_ids = set(json.load(f).get('trade_ids', []))
+            except Exception:
+                pass
             
             if os.path.exists(trade_file):
                 with open(trade_file, 'r') as f:
@@ -464,10 +474,15 @@ class GrvtExchange(ExchangeInterface):
                     if not file_exists:
                         writer.writerow(['timestamp', 'symbol', 'side', 'direction', 'price', 'amount', 'cost', 'rebate', 'realized_pnl', 'grid_profit', 'note'])
                     writer.writerows(new_rows)
-                self.logger.info(f"Saved {len(new_rows)} bot trades (skipped {skipped_manual} manual)")
-            elif skipped_manual > 0:
-                self.logger.debug(f"No new bot trades (skipped {skipped_manual} manual)")
-                
+                self.logger.info(f"Saved {len(new_rows)} trades to history")
+            
+            # Always persist processed trade IDs (prevents re-import after CSV reset)
+            try:
+                import json
+                with open(processed_ids_file, 'w') as f:
+                    json.dump({'trade_ids': list(existing_ids)}, f)
+            except Exception:
+                pass
         except Exception as e:
             self.logger.warning(f"Failed to fetch trades: {e}")
 

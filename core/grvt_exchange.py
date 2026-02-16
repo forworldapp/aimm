@@ -284,6 +284,10 @@ class GrvtExchange(ExchangeInterface):
             except Exception as e2:
                 self.logger.error(f"Fallback close also failed: {e2}")
 
+    def set_as_metrics(self, metrics: dict):
+        """Set Avellaneda-Stoikov model metrics for dashboard display."""
+        self._as_metrics = metrics
+
     def save_live_status(self, symbol: str, mid_price: float, regime: str, 
                          position: Dict, open_orders: List, equity: float):
         """Save current status for dashboard (Live mode equivalent of _save_status)."""
@@ -322,7 +326,8 @@ class GrvtExchange(ExchangeInterface):
             "market_regime": regime,
             "regime": regime,
             "cumulative_grid_profit": round(cumulative_grid_profit, 4),
-            "last_increase_price": 0.0
+            "last_increase_price": 0.0,
+            "as_metrics": getattr(self, '_as_metrics', {})
         }
         
         try:

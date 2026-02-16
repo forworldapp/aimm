@@ -33,7 +33,8 @@ class GrvtExchange(ExchangeInterface):
         self.private_key = os.environ.get('GRVT_PRIVATE_KEY')
         self.trading_account_id = os.environ.get('GRVT_TRADING_ACCOUNT_ID')
         self.exchange = None
-        self._bot_order_ids = set()  # Track order IDs placed by this bot
+        self._bot_order_ids_file = os.path.join('data', 'bot_order_ids.json')
+        self._bot_order_ids = self._load_bot_order_ids()  # Load from disk (survives restarts)
         self._last_fill_info = None  # Last fill info for Telegram notification
         
         if GrvtCcxt is None:
@@ -55,6 +56,35 @@ class GrvtExchange(ExchangeInterface):
             }
         )
 
+    def _load_bot_order_ids(self) -> set:
+        """Load bot order IDs from disk to survive restarts."""
+        import json
+        try:
+            if os.path.exists(self._bot_order_ids_file):
+                with open(self._bot_order_ids_file, 'r') as f:
+                    data = json.load(f)
+                ids = set(data.get('order_ids', []))
+                self.logger.info(f"Loaded {len(ids)} bot order IDs from disk")
+                return ids
+        except Exception as e:
+            self.logger.warning(f"Failed to load bot order IDs: {e}")
+        return set()
+
+    def _save_bot_order_ids(self):
+        """Persist bot order IDs to disk."""
+        import json
+        from datetime import datetime
+        try:
+            os.makedirs(os.path.dirname(self._bot_order_ids_file), exist_ok=True)
+            with open(self._bot_order_ids_file, 'w') as f:
+                json.dump({
+                    'order_ids': list(self._bot_order_ids),
+                    'count': len(self._bot_order_ids),
+                    'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }, f)
+        except Exception as e:
+            self.logger.warning(f"Failed to save bot order IDs: {e}")
+
     async def connect(self):
         """
         GRVT SDK handles connection lazily usually, but we can verify creds here.
@@ -63,8 +93,12 @@ class GrvtExchange(ExchangeInterface):
             raise RuntimeError("GRVT SDK not initialized")
         
         self.logger.info(f"Connected to GRVT ({self.env})")
-        # Optional: Load markets to cache symbol info
-        # await self.exchange.load_markets() 
+        
+        # Reconcile: fetch any fills from previous session's bot orders
+        if self._bot_order_ids:
+            self.logger.info(f"Startup reconciliation: checking fills for {len(self._bot_order_ids)} persisted bot orders")
+            # This triggers fetch_and_save_trades which will match against _bot_order_ids
+        
 
     async def get_balance(self) -> Dict[str, float]:
         if not self.exchange: return {}
@@ -95,6 +129,7 @@ class GrvtExchange(ExchangeInterface):
                 order_id = order.get('order_id', order.get('id'))
                 if order_id:
                     self._bot_order_ids.add(order_id)
+                    self._save_bot_order_ids()  # Persist to disk immediately
                 self.logger.info(f"Order placed: {order_id}")
                 return order_id
             except Exception as e:

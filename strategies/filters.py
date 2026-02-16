@@ -190,19 +190,22 @@ class ComboFilter(TrendFilter):
 class RSIFilter(TrendFilter):
     """
     RSI Filter for Overbought/Oversold detection.
+    Thresholds: 80 (overbought) / 20 (oversold) to avoid over-filtering.
+    Requires 30+ candles for stable readings (warmup period).
     """
-    def __init__(self, period=14, overbought=70, oversold=30):
+    def __init__(self, period=14, overbought=80, oversold=20):
         self.period = period
         self.overbought = overbought
         self.oversold = oversold
+        self.min_warmup = 30  # Minimum candles before RSI filtering is active
 
     def analyze(self, df):
         """
         Returns:
-        - 'overbought' if RSI > 70
-        - 'oversold' if RSI < 30
-        - 'neutral' otherwise
-        - 'waiting' if insufficient data
+        - 'overbought' if RSI > 80 (and enough data)
+        - 'oversold' if RSI < 20 (and enough data)
+        - 'neutral' otherwise (or during warmup)
+        - 'waiting' if insufficient data for calculation
         """
         if len(df) < self.period + 1:
             return 'waiting'
@@ -219,6 +222,10 @@ class RSIFilter(TrendFilter):
         
         current_rsi = rsi.iloc[-1]
         self.last_rsi = current_rsi # Store for display
+        
+        # Warmup: Don't block orders until we have enough candles for stable RSI
+        if len(df) < self.min_warmup:
+            return 'neutral'
         
         if current_rsi > self.overbought:
             return 'overbought'

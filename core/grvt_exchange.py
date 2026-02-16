@@ -398,18 +398,14 @@ class GrvtExchange(ExchangeInterface):
             # Sort trades by time (oldest first for correct FIFO)
             trades_list = sorted(trades_list, key=lambda x: x.get('event_time', 0))
             
-            # Process new trades - ONLY those placed by this bot
+            # Process new trades
+            # NOTE: All trades on this sub-account are treated as bot trades.
+            # GRVT SDK returns 0x00 for order_id on create, making order_id matching impossible.
+            # If you do manual trading on the SAME sub-account, you'll need a different approach.
             new_rows = []
-            skipped_manual = 0
             for trade in trades_list:
                 trade_id = trade.get('trade_id', '')
-                order_id = trade.get('order_id', '')
                 if not trade_id or trade_id in existing_ids:
-                    continue
-                
-                # *** FILTER: Only include trades from bot-placed orders ***
-                if order_id not in self._bot_order_ids:
-                    skipped_manual += 1
                     continue
                     
                 # GRVT trade format

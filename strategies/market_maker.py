@@ -798,16 +798,20 @@ class MarketMaker:
         
         self._update_history(mid_price)
         self._update_candle(mid_price, time.time())
-        current_pos_qty = position.get('amount', 0.0)
-        self.inventory = current_pos_qty
+        current_pos_qty = position.get('amount', 0.0)  # Total account position (for order mgmt)
         
-        # --- Bot-Only Risk Management ---
-        # Uses ONLY bot trades from trade_history CSV (realized + unrealized P&L)
-        # Manual trades are completely excluded
+        # --- Bot-Only P&L and Position ---
+        # Uses ONLY bot trades from trade_history CSV
+        # Manual trades are completely excluded from ALL risk management
+        bot_pnl = self.exchange.get_bot_pnl(self.symbol, mid_price)
+        bot_pos_qty = bot_pnl.get('bot_net_qty', 0.0)    # Bot-only position
+        bot_avg_entry = bot_pnl.get('bot_avg_entry', 0.0) # Bot avg entry price
+        bot_total_pnl = bot_pnl.get('total_pnl', 0.0)
+        bot_cost_basis = bot_pnl.get('bot_cost_basis', 0.0)
+        self.inventory = bot_pos_qty  # Risk management uses bot-only position
+        
+        # --- Bot-Only Risk Checks ---
         try:
-            bot_pnl = self.exchange.get_bot_pnl(self.symbol, mid_price)
-            bot_total_pnl = bot_pnl.get('total_pnl', 0.0)
-            bot_cost_basis = bot_pnl.get('bot_cost_basis', 0.0)
             
             # Circuit Breaker: max loss in USD (bot-only)
             if bot_total_pnl < -self.max_loss_usd:
@@ -865,7 +869,7 @@ class MarketMaker:
         last_rsi = getattr(self.rsi_filter, 'last_rsi', 50.0)
         
         # Reset Latch if flat
-        if current_pos_qty == 0:
+        if bot_pos_qty == 0:
             self.latched_regime = None
         
         # Reset Latch based on RSI thresholds (Hysteresis)
@@ -887,7 +891,7 @@ class MarketMaker:
              effective_regime += " (Latched)"
              
         # Log Status
-        self.logger.info(f"Pos: {current_pos_qty:.4f} | Mid: {mid_price:.2f} | Regime: {effective_regime} | RSI: {last_rsi:.1f} | Equity: {position.get('unrealizedPnL', 0):.2f}")
+        self.logger.info(f"BotPos: {bot_pos_qty:.4f} | Mid: {mid_price:.2f} | Regime: {effective_regime} | RSI: {last_rsi:.1f} | BotP&L: ${bot_total_pnl:.2f} (R:${bot_pnl.get('realized_pnl',0):.2f} U:${bot_pnl.get('unrealized_pnl',0):.2f})")
 
         # Sync to Paper Exchange
         if hasattr(self.exchange, 'set_market_regime'):
@@ -1004,7 +1008,7 @@ class MarketMaker:
                 # Get adjustment
                 fr_adj = self.funding_integrator.get_adjustment(
                     fr_analysis,
-                    current_inventory=current_pos_qty,
+                    current_inventory=bot_pos_qty,  # Bot-only position
                     max_inventory=self.max_position_usd / mid_price if mid_price > 0 else 1.0
                 )
                 
@@ -1046,7 +1050,7 @@ class MarketMaker:
         ml_skew_factor = getattr(self, '_ml_skew_factor', 0.005)  # Default 0.5%
         skew_multiplier = ml_skew_factor / 0.005  # Normalize to base 0.5%
         max_skew_qty = estimated_qty * 20 / skew_multiplier  # Higher skew = lower threshold
-        inventory_ratio = max(-1.0, min(1.0, current_pos_qty / max_skew_qty))
+        inventory_ratio = max(-1.0, min(1.0, bot_pos_qty / max_skew_qty))  # Bot-only position for skew
         
         # Determine Spread using A&S formula (or legacy)
         final_spread = self._calculate_dynamic_spread()
@@ -1100,9 +1104,10 @@ class MarketMaker:
         # Dropdown Check (Pass)
 
         # --- 3. Entry Guard / Profit Protection (Anchor) ---
-        entry_price = position.get('entryPrice', 0.0)
+        # Uses bot avg entry price instead of total position entry price
+        entry_price = bot_avg_entry if bot_avg_entry > 0 else position.get('entryPrice', 0.0)
         
-        if self.entry_anchor_mode and current_pos_qty != 0 and entry_price > 0:
+        if self.entry_anchor_mode and bot_pos_qty != 0 and entry_price > 0:
             # Regime-Based Stop Loss Logic
             loss_tolerance = 0.0 # Default: Zero Tolerance (Strictly Profit Only)
             
@@ -1112,14 +1117,14 @@ class MarketMaker:
             
             # Neutral: Strict "Hold" (loss_tolerance ~ 0)
             
-            if current_pos_qty > 0: # Long
+            if bot_pos_qty > 0: # Long (bot)
                  # DCA: Buy if price < Entry
                  target_bid = min(target_bid, entry_price * 0.9995)
                  # Anchor: Limit Sell Price
                  limit_price = entry_price * (1.0 - loss_tolerance) + (entry_price * 0.0005) # Adjust slightly
                  target_ask = max(target_ask, entry_price * (1 - loss_tolerance)) 
                  
-            elif current_pos_qty < 0: # Short
+            elif bot_pos_qty < 0: # Short (bot)
                  # DCA: Sell if price > Entry
                  target_ask = max(target_ask, entry_price * 1.0005)
                  # Anchor: Limit Buy Price
@@ -1131,21 +1136,21 @@ class MarketMaker:
         allow_buy = rsi_status != 'overbought'
         allow_sell = rsi_status != 'oversold'
         
-        # --- 4.1 Max Position Limit (ML-adjusted) ---
-        # Block further accumulation when position exceeds ML-adjusted max_position_usd
+        # --- 4.1 Max Position Limit (ML-adjusted, Bot-only) ---
+        # Block further accumulation when BOT position exceeds ML-adjusted max_position_usd
         ml_max_pos_mult = getattr(self, '_ml_max_position_mult', 1.0)
         effective_max_position = self.max_position_usd * ml_max_pos_mult
-        position_usd = abs(current_pos_qty) * mid_price
-        if position_usd >= effective_max_position:
-            if current_pos_qty > 0:
-                allow_buy = False  # Long position at limit → block buying
-                self.logger.debug(f"Max position reached: ${position_usd:.0f} >= ${effective_max_position:.0f}, blocking BUY")
-            elif current_pos_qty < 0:
-                allow_sell = False  # Short position at limit → block selling
-                self.logger.debug(f"Max position reached: ${position_usd:.0f} >= ${effective_max_position:.0f}, blocking SELL")
+        bot_position_usd = abs(bot_pos_qty) * mid_price  # Bot-only position in USD
+        if bot_position_usd >= effective_max_position:
+            if bot_pos_qty > 0:
+                allow_buy = False  # Bot long at limit → block buying
+                self.logger.debug(f"Bot max pos reached: ${bot_position_usd:.0f} >= ${effective_max_position:.0f}, blocking BUY")
+            elif bot_pos_qty < 0:
+                allow_sell = False  # Bot short at limit → block selling
+                self.logger.debug(f"Bot max pos reached: ${bot_position_usd:.0f} >= ${effective_max_position:.0f}, blocking SELL")
         
         # DEBUG: Log Allow Status
-        self.logger.info(f"DEBUG: AllowBuy={allow_buy} AllowSell={allow_sell} Pos=${position_usd:.0f}/{(effective_max_position):.0f} (x{ml_max_pos_mult})")
+        self.logger.info(f"DEBUG: AllowBuy={allow_buy} AllowSell={allow_sell} BotPos=${bot_position_usd:.0f}/{(effective_max_position):.0f} (x{ml_max_pos_mult})")
                 
         # --- 5. Generate Grid Orders ---
         buy_orders = []
@@ -1200,7 +1205,7 @@ class MarketMaker:
                 
                 # Calculate asymmetric bid/ask sizes
                 bid_size_usd, ask_size_usd = self.dynamic_sizer.calculate(
-                    inventory=current_pos_qty * mid_price,  # Convert to USD
+                    inventory=bot_pos_qty * mid_price,  # Bot-only position in USD
                     volatility=volatility,
                     book_depth=book_depth
                 )

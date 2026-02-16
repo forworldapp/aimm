@@ -36,8 +36,8 @@ class RegimeDetector:
             "gamma": 1.5, 
             "kappa": 2000, 
             "skew_factor": 0.003,       # Tight skew for stable market
-            "price_tolerance": 0.001,    # 0.1% tolerance
-            "grid_spacing": 0.0010,      # 0.10% grid (tight)
+            "price_tolerance": 0.005,    # 0.5% - 1m backtest optimized
+            "grid_spacing": 0.0015,      # 0.15% (tight)
             "order_size_mult": 1.0,      # Normal order size
             "grid_layers": 10,           # More layers in stable market
             "max_position_mult": 1.4,    # 140% max position ($7,000)
@@ -47,8 +47,8 @@ class RegimeDetector:
             "gamma": 0.5, 
             "kappa": 500, 
             "skew_factor": 0.008,        # Higher skew to sell more
-            "price_tolerance": 0.0015,   # 0.15% tolerance
-            "grid_spacing": 0.0015,      # 0.15% grid
+            "price_tolerance": 0.008,    # 0.8% - 1m backtest: most fills
+            "grid_spacing": 0.0020,      # 0.20%
             "order_size_mult": 0.8,      # Smaller orders in trend
             "grid_layers": 7,            # Normal layers
             "max_position_mult": 1.0,    # Normal max position ($5,000)
@@ -58,8 +58,8 @@ class RegimeDetector:
             "gamma": 0.5, 
             "kappa": 500, 
             "skew_factor": 0.008,        # Higher skew to buy more
-            "price_tolerance": 0.0015,   # 0.15% tolerance  
-            "grid_spacing": 0.0015,      # 0.15% grid
+            "price_tolerance": 0.008,    # 0.8% - 1m backtest: most fills
+            "grid_spacing": 0.0020,      # 0.20%
             "order_size_mult": 0.8,      # Smaller orders in trend
             "grid_layers": 7,            # Normal layers
             "max_position_mult": 1.0,    # Normal max position ($5,000)
@@ -69,8 +69,8 @@ class RegimeDetector:
             "gamma": 0.3, 
             "kappa": 200, 
             "skew_factor": 0.002,        # Low skew
-            "price_tolerance": 0.002,    # 0.2% tolerance
-            "grid_spacing": 0.0020,      # 0.20% grid (Wide Safety)
+            "price_tolerance": 0.010,    # 1.0% - 1m backtest: best PnL
+            "grid_spacing": 0.0030,      # 0.30% (Wide Safety)
             "order_size_mult": 0.7,      # 0.7x (Compromise between 0.5 and 0.8)
             "grid_layers": 5,            # Fewer layers
             "max_position_mult": 0.6,    # 60% max position (Safety First)

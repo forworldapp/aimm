@@ -1296,7 +1296,7 @@ class MarketMaker:
         new_sell_prices = set(p for p, q in sell_orders)
         
         # Check if orders need update (use ML-adjusted tolerance)
-        PRICE_TOLERANCE = getattr(self, '_ml_price_tolerance', 0.001)  # ML-adjusted or 0.1% default
+        PRICE_TOLERANCE = getattr(self, '_ml_price_tolerance', 0.008)  # ML-adjusted or 0.8% default (1m backtest optimized)
         
         def prices_match(existing_prices, new_prices, tolerance):
             # Strict count check causes constant updates if any order is filled/cancelled externally

@@ -454,17 +454,43 @@ if as_metrics and as_metrics.get('reservation_price', 0) > 0:
             delta = (z_mult - 1.0) * 100
             st.metric("Size Adj", f"x{z_mult:.2f}", f"{delta:+.0f}%")
     
+    # Risk & Adverse Selection Metrics (Backported from v4 Dashboard)
+    st.divider()
+    st.markdown("#### 🛡️ Risk & Adverse Selection")
+    col_r1, col_r2, col_r3, col_r4 = st.columns(4)
+    
+    # Helper for safe float conversion
+    def safe_float(val, default=0.0):
+        try:
+            return float(val) if val is not None else default
+        except (ValueError, TypeError):
+            return default
+
+    with col_r1:
+        sharpe = safe_float(as_metrics.get('sharpe_ratio'))
+        st.metric("Sharpe Ratio", f"{sharpe:.2f}")
+    with col_r2:
+        tdd = safe_float(as_metrics.get('max_drawdown'))
+        st.metric("Max Drawdown", f"{tdd*100:.2f}%")
+    with col_r3:
+        as_prob = safe_float(as_metrics.get('as_prob'))
+        as_trades = int(safe_float(as_metrics.get('as_trades')))
+        st.metric("AS Probability", f"{as_prob*100:.1f}%", delta=f"{as_trades} Toxic Trades", delta_color="inverse")
+    with col_r4:
+        inv_bias = safe_float(as_metrics.get('inventory_bias'))
+        st.metric("Inventory Bias", f"{inv_bias:+.2f}")
+
     # Adaptive Tuning Metrics Row
-    if as_metrics.get('adjustments', 0) > 0:
+    if safe_float(as_metrics.get('adjustments')) > 0:
         col_ad1, col_ad2, col_ad3 = st.columns(3)
         with col_ad1:
-            recent_pnl = as_metrics.get('recent_pnl', 0)
+            recent_pnl = safe_float(as_metrics.get('recent_pnl'))
             st.metric("📈 최근 PnL", f"${recent_pnl:.2f}", delta_color="normal")
         with col_ad2:
-            win_rate = as_metrics.get('win_rate', 0)
+            win_rate = safe_float(as_metrics.get('win_rate'))
             st.metric("🎯 승률", f"{win_rate:.1f}%")
         with col_ad3:
-            adjustments = as_metrics.get('adjustments', 0)
+            adjustments = int(safe_float(as_metrics.get('adjustments')))
             st.metric("🔄 조정 횟수", f"{adjustments}")
 # ============================================================
 # END: Avellaneda-Stoikov Metrics Component

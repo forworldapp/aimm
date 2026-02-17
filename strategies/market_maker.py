@@ -1456,6 +1456,56 @@ class MarketMaker:
                         self.logger.info(f"Daily PnL alert failed: {e}")
                     self._daily_pnl_last_date = today
 
+    async def _save_dashboard_metrics(self):
+        """Calculate and save extended metrics for Streamlit Dashboard."""
+        try:
+            # 1. Gather Metrics
+            metrics = getattr(self.exchange, '_as_metrics', {}).copy()
+            
+            # Risk/Performance
+            metrics['sharpe_ratio'] = getattr(self.risk_manager, 'sharpe_ratio', 0.0)
+            metrics['max_drawdown'] = getattr(self.risk_manager, 'max_drawdown', 0.0)
+            
+            # Inventory / Bias
+            metrics['inventory_bias'] = self.inventory / self.max_position_usd if self.max_position_usd else 0.0
+            
+            # AS / ML
+            if self.as_detector:
+                metrics['as_prob'] = getattr(self.as_detector, 'current_prob', 0.0)
+                metrics['as_trades'] = getattr(self.as_detector, 'toxic_trade_count', 0)
+            
+            metrics['ml_regime'] = self.current_ml_regime
+            metrics['regime_confidence'] = getattr(self, '_regime_conf', 0.0)
+            
+            # Update Exchange State
+            if hasattr(self.exchange, 'set_as_metrics'):
+                self.exchange.set_as_metrics(metrics)
+            
+            # Trigger Save for Live Exchange (GrvtExchange)
+            # PaperExchange saves automatically when set_as_metrics is called, but GrvtExchange doesn't.
+            if hasattr(self.exchange, 'save_live_status'):
+                # Gather data for status file
+                status = await self.exchange.get_account_summary()
+                pos = await self.exchange.get_position(self.symbol)
+                open_orders = await self.exchange.get_open_orders(self.symbol)
+                
+                # Get mid price robustly
+                mid_price = 0.0
+                if self.price_history:
+                    mid_price = self.price_history[-1]
+                
+                self.exchange.save_live_status(
+                    symbol=self.symbol,
+                    mid_price=mid_price,
+                    regime=self.current_ml_regime,
+                    position=pos,
+                    open_orders=open_orders,
+                    equity=status.get('total_equity', 0.0)
+                )
+                
+        except Exception as e:
+            self.logger.warning(f"Failed to save dashboard metrics: {e}")
+
     async def run(self):
         self.logger.info("Strategy Started")
         self.is_running = True
@@ -1489,6 +1539,10 @@ class MarketMaker:
                     continue
 
                 await self.cycle()
+                
+                # Update Dashboard Status (Works for both Paper and Live)
+                await self._save_dashboard_metrics()
+                
             except Exception as e:
                 self.logger.error(f"Error in strategy cycle: {e}")
             

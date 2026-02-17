@@ -32,48 +32,48 @@ class HMMRegimeDetector:
     # Differentiated per regime via scaling + domain knowledge
     REGIME_PARAMS = {
         "low_vol": {
-            "gamma": 2.28, 
-            "kappa": 2961, 
-            "skew_factor": 0.005,
-            "price_tolerance": 0.010,    # 1.0% - tighter ok in calm markets
+            "gamma": 1.5, 
+            "kappa": 2000, 
+            "skew_factor": 0.003,
+            "price_tolerance": 0.005,    # 0.5% - moderate in calm markets
             "grid_spacing": 0.0015,      # 0.15% - tight grid for scalping
             "order_size_mult": 1.0,
-            "grid_layers": 5,
-            "max_position_mult": 1.85,
-            "description": "Calm market - tighter tol, more layers, full size"
+            "grid_layers": 10,
+            "max_position_mult": 1.4,
+            "description": "Tight spread, stable - aggressive accumulation"
         },
         "trend_up": {
-            "gamma": 2.28, 
-            "kappa": 2961, 
-            "skew_factor": 0.015,
-            "price_tolerance": 0.0145,   # 1.45% - Optuna baseline
+            "gamma": 0.5, 
+            "kappa": 500, 
+            "skew_factor": 0.008,
+            "price_tolerance": 0.008,    # 0.8% - 1m backtest: most fills (43)
             "grid_spacing": 0.0020,      # 0.20% - wider for trend capture
-            "order_size_mult": 0.85,
-            "grid_layers": 3,
-            "max_position_mult": 1.2,
-            "description": "Uptrend - high skew to sell into strength"
+            "order_size_mult": 0.8,
+            "grid_layers": 7,
+            "max_position_mult": 1.0,
+            "description": "Wide spread, favor sells - ride the trend"
         },
         "trend_down": {
-            "gamma": 2.28, 
-            "kappa": 2961, 
-            "skew_factor": 0.015,
-            "price_tolerance": 0.0145,   # 1.45% - Optuna baseline
+            "gamma": 0.5, 
+            "kappa": 500, 
+            "skew_factor": 0.008,
+            "price_tolerance": 0.008,    # 0.8% - 1m backtest: most fills (43)
             "grid_spacing": 0.0020,      # 0.20% - wider for trend capture
-            "order_size_mult": 0.85,
-            "grid_layers": 3,
-            "max_position_mult": 1.2,
-            "description": "Downtrend - high skew to buy dips"
+            "order_size_mult": 0.8,
+            "grid_layers": 7,
+            "max_position_mult": 1.0,
+            "description": "Wide spread, favor buys - accumulate dips"
         },
         "high_vol": {
-            "gamma": 1.5, 
-            "kappa": 1500, 
-            "skew_factor": 0.005,
-            "price_tolerance": 0.015,    # 1.5% - widest for volatile markets
+            "gamma": 0.3, 
+            "kappa": 200, 
+            "skew_factor": 0.002,
+            "price_tolerance": 0.010,    # 1.0% - widest, best PnL in 1m test
             "grid_spacing": 0.0030,      # 0.30% - wide grid for safety
             "order_size_mult": 0.7,
-            "grid_layers": 3,
-            "max_position_mult": 0.8,
-            "description": "Volatile - widest tol, small size, survival mode"
+            "grid_layers": 5,
+            "max_position_mult": 0.6,
+            "description": "Wide spread, conservative - survival mode"
         }
     }
     

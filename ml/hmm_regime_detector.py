@@ -27,53 +27,53 @@ class HMMRegimeDetector:
         3: "high_vol"
     }
     
-    # Same parameters as GMM for fair comparison
-    # Optimized via backtest sweep (2026-02-16)
-    # See docs/BACKTEST_tolerance_sweep_2026-02-16.md for details
+    # Optuna-optimized (2026-02-16, 20 trials × 5000 1m candles)
+    # Baseline: gamma=2.28, kappa=2961, tol=1.45% → $7.06 PnL, Sharpe 10.80
+    # Differentiated per regime via scaling + domain knowledge
     REGIME_PARAMS = {
         "low_vol": {
-            "gamma": 1.5, 
-            "kappa": 2000, 
-            "skew_factor": 0.003,
-            "price_tolerance": 0.005,    # 0.5% - moderate in calm markets
+            "gamma": 2.28, 
+            "kappa": 2961, 
+            "skew_factor": 0.005,
+            "price_tolerance": 0.010,    # 1.0% - tighter ok in calm markets
             "grid_spacing": 0.0015,      # 0.15% - tight grid for scalping
             "order_size_mult": 1.0,
-            "grid_layers": 10,
-            "max_position_mult": 1.4,
-            "description": "Tight spread, stable - aggressive accumulation"
+            "grid_layers": 5,
+            "max_position_mult": 1.85,
+            "description": "Calm market - tighter tol, more layers, full size"
         },
         "trend_up": {
-            "gamma": 0.5, 
-            "kappa": 500, 
-            "skew_factor": 0.008,
-            "price_tolerance": 0.008,    # 0.8% - 1m backtest: most fills (43)
+            "gamma": 2.28, 
+            "kappa": 2961, 
+            "skew_factor": 0.015,
+            "price_tolerance": 0.0145,   # 1.45% - Optuna baseline
             "grid_spacing": 0.0020,      # 0.20% - wider for trend capture
-            "order_size_mult": 0.8,
-            "grid_layers": 7,
-            "max_position_mult": 1.0,
-            "description": "Wide spread, favor sells - ride the trend"
+            "order_size_mult": 0.85,
+            "grid_layers": 3,
+            "max_position_mult": 1.2,
+            "description": "Uptrend - high skew to sell into strength"
         },
         "trend_down": {
-            "gamma": 0.5, 
-            "kappa": 500, 
-            "skew_factor": 0.008,
-            "price_tolerance": 0.008,    # 0.8% - 1m backtest: most fills (43)
+            "gamma": 2.28, 
+            "kappa": 2961, 
+            "skew_factor": 0.015,
+            "price_tolerance": 0.0145,   # 1.45% - Optuna baseline
             "grid_spacing": 0.0020,      # 0.20% - wider for trend capture
-            "order_size_mult": 0.8,
-            "grid_layers": 7,
-            "max_position_mult": 1.0,
-            "description": "Wide spread, favor buys - accumulate dips"
+            "order_size_mult": 0.85,
+            "grid_layers": 3,
+            "max_position_mult": 1.2,
+            "description": "Downtrend - high skew to buy dips"
         },
         "high_vol": {
-            "gamma": 0.3, 
-            "kappa": 200, 
-            "skew_factor": 0.002,
-            "price_tolerance": 0.010,    # 1.0% - widest, best PnL in 1m test
+            "gamma": 1.5, 
+            "kappa": 1500, 
+            "skew_factor": 0.005,
+            "price_tolerance": 0.015,    # 1.5% - widest for volatile markets
             "grid_spacing": 0.0030,      # 0.30% - wide grid for safety
             "order_size_mult": 0.7,
-            "grid_layers": 5,
-            "max_position_mult": 0.6,
-            "description": "Wide spread, conservative - survival mode"
+            "grid_layers": 3,
+            "max_position_mult": 0.8,
+            "description": "Volatile - widest tol, small size, survival mode"
         }
     }
     
@@ -83,10 +83,33 @@ class HMMRegimeDetector:
         self.scaler = StandardScaler()
         self.is_fitted = False
         self.cluster_to_regime = {}
+        self._optimized_params = {}  # Loaded from JSON if available
+        
+        # Load optimized params if available
+        self._load_optimized_params()
         
         # Try to load existing model
         if os.path.exists(model_path):
             self.load_model()
+    
+    def _load_optimized_params(self):
+        """Load data-driven optimized params from JSON (overrides hardcoded REGIME_PARAMS)."""
+        params_path = os.path.join("data", "optimized_regime_params.json")
+        if not os.path.exists(params_path):
+            return
+        try:
+            import json
+            with open(params_path, 'r') as f:
+                data = json.load(f)
+            trading_keys = ['gamma', 'kappa', 'skew_factor', 'price_tolerance',
+                            'grid_spacing', 'order_size_mult', 'grid_layers', 'max_position_mult']
+            for regime, params in data.get('regimes', {}).items():
+                self._optimized_params[regime] = {k: params[k] for k in trading_keys if k in params}
+            if self._optimized_params:
+                print(f"HMM: Loaded optimized params for {list(self._optimized_params.keys())} "
+                      f"(from {data.get('optimized_at', 'unknown')})")
+        except Exception as e:
+            print(f"HMM: Failed to load optimized params: {e}")
     
     def _calculate_features(self, df: pd.DataFrame) -> np.ndarray:
         """
@@ -340,10 +363,11 @@ class HMMRegimeDetector:
             return {}
     
     def get_params_for_regime(self, regime: str) -> dict:
-        """
-        Get A&S parameters for the detected regime.
-        """
-        return self.REGIME_PARAMS.get(regime, self.REGIME_PARAMS["low_vol"])
+        """Get A&S parameters — optimized values override hardcoded defaults."""
+        base = self.REGIME_PARAMS.get(regime, self.REGIME_PARAMS["low_vol"]).copy()
+        if regime in self._optimized_params:
+            base.update(self._optimized_params[regime])
+        return base
     
     def save_model(self):
         """Save trained model to disk."""

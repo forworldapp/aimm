@@ -41,8 +41,8 @@ class OrderFlowAnalyzer:
                 
                 # Handle [price, qty] list format
                 # If dict, adapt accordingly (PaperExchange uses dict, Mock uses list)
-                bid_q = float(bids[i][1]) if isinstance(bids[i], (list, tuple)) else float(bids[i]['amount'])
-                ask_q = float(asks[i][1]) if isinstance(asks[i], (list, tuple)) else float(asks[i]['amount'])
+                bid_q = float(bids[i][1]) if isinstance(bids[i], (list, tuple)) else float(bids[i].get('amount', bids[i].get('size', 0)))
+                ask_q = float(asks[i][1]) if isinstance(asks[i], (list, tuple)) else float(asks[i].get('amount', asks[i].get('size', 0)))
                 
                 w_bid_vol += bid_q * w
                 w_ask_vol += ask_q * w

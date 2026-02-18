@@ -9,12 +9,12 @@ Features:
 - Aggressive Entry Mode (Maximize fill rate on signals).
 
 Author: Antigravity
-Version: 1.4.1 (Hotfix)
-Last Updated: 2025-12-18
+Version: 7.0.0 (LSTM Production)
+Last Updated: 2026-02-18
 Changelog:
-- Fixed Persistence: Properly restoring Paper Exchange state on restart.
-- Fixed Inventory Logic: Added missing inventory initialization and sync for exit logic.
-- Fixed Import Error: Corrected filter module imports.
+- v7.0.0: Full LSTM Integration (Trend/Range/Skew). Status Monitoring fixed.
+- v6.x: RL Experiments (Disabled).
+- v5.x: Order Flow & Microstructure (Stable).
 """
 
 import sys
@@ -26,13 +26,22 @@ import asyncio
 import statistics
 import pandas as pd
 from datetime import datetime
+import torch
 
 # Adjust path for local imports if needed
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.config import Config
 from core.risk_manager import RiskManager
-from core.paper_exchange import PaperGrvtExchange # Assuming this is needed based on the instruction's import list, though not used in the provided snippet.
+from core.paper_exchange import PaperGrvtExchange 
+
+# [Backport] strategy_core shared logic
+try:
+    from strategy_core.spread import optimal_spread, reservation_price, volatility_sigma_from_prices
+    STRATEGY_CORE_AVAILABLE = True
+except ImportError:
+    STRATEGY_CORE_AVAILABLE = False
+
 
 # New Filters Import
 from strategies.filters import RSIFilter, MAFilter, ADXFilter, ATRFilter, BollingerFilter, ComboFilter, ChopFilter
@@ -129,6 +138,14 @@ except ImportError:
     NOTIFIER_AVAILABLE = False
     TelegramNotifier = None
 
+
+# ML Predictor (Phase 4)
+try:
+    from ml.predictor import MLPredictor
+    ML_PREDICTOR_AVAILABLE = True
+except ImportError:
+    ML_PREDICTOR_AVAILABLE = False
+    MLPredictor = None
 
 def round_tick_size(price, tick_size):
     return round(price / tick_size) * tick_size
@@ -231,6 +248,26 @@ class MarketMaker:
         self._prev_position_qty = 0.0  # Track position changes
         self._daily_pnl_last_date = None  # Daily PnL dedup
         self._bot_start_notified = False  # Send start alert once
+        
+        # ML Predictor (Phase 4)
+        self.ml_predictor = None
+        if ML_PREDICTOR_AVAILABLE:
+            try:
+                self.ml_predictor = MLPredictor(device=torch.device("cpu")) # CPU inference is enough
+                self.logger.info("🧠 ML Predictor Loaded (V2)")
+            except Exception as e:
+                self.logger.warning(f"Failed to load ML Predictor: {e}")
+
+        # Dashboard / Status Tracking
+        self.reservation_price_val = 0.0
+        self.current_spread_val = 0.0
+        self.current_sigma = 0.0 # ML State
+        self.current_ml_regime = "LSTM:Booting..."
+        self.current_hmm_regime = "HMM:Init..."
+        self.current_price = 0.0
+        self.latched_regime = None
+        self.last_ml_metrics = {}
+
         
     def _load_params(self):
         """Load strategy parameters from config.yaml"""
@@ -526,7 +563,7 @@ class MarketMaker:
                 if probs:
                     # Determine dominant regime for logging/display
                     dominant_regime = max(probs, key=probs.get)
-                    self.current_ml_regime = dominant_regime
+                    self.current_hmm_regime = dominant_regime
                     
                     # Initialize blended params
                     blended = {
@@ -567,7 +604,7 @@ class MarketMaker:
                     self.logger.info(f"🧠 ML: {dominant_regime}({probs[dominant_regime]:.2f}) | {prob_str}")
                     self.logger.info(f"   ↳ Blended: γ={gamma:.2f} κ={kappa:.0f} grid={self._ml_grid_layers}x{self._ml_grid_spacing*100:.2f}%")
                 else:
-                    self.current_ml_regime = "unknown"
+                    self.current_hmm_regime = "unknown"
                     
             except Exception as e:
                 self.logger.debug(f"ML regime prediction failed: {e}")
@@ -594,27 +631,46 @@ class MarketMaker:
         time_factor = 0.5  # Neutral time factor for crypto markets
         
         # Optimal Spread Formula
-        try:
-            # Term 1: Risk-adjusted volatility component
-            # Scale σ by 100 so micro-volatility has meaningful impact
-            # Without scaling: 0.01% σ → σ²=0.000001% → negligible
-            # With scaling: 0.01% × 100 = 1% → σ²=0.01% → meaningful
-            sigma_scaled = sigma * 100
-            term1 = gamma * (sigma_scaled ** 2) * time_factor
-            
-            # Term 2: Liquidity-adjusted component (base spread)
-            term2 = (2 / gamma) * math.log(1 + gamma / kappa)
-            
-            optimal_spread = term1 + term2
-            
-            # Clamp to configured bounds
-            optimal_spread = max(min_spread, min(max_spread, optimal_spread))
-            
-            self.logger.debug(f"A&S Spread: σ={sigma:.4f}, γ={gamma}, κ={kappa} → δ={optimal_spread:.4f}")
-            
-        except Exception as e:
-            self.logger.warning(f"A&S spread calc error: {e}, using base spread")
-            optimal_spread = self.base_spread
+        if STRATEGY_CORE_AVAILABLE:
+            # Use shared strategy_core implementation
+            try:
+                # Calculate optimal spread using shared pure function
+                optimal_spread_val = optimal_spread(
+                    sigma=sigma,
+                    gamma=gamma,
+                    kappa=kappa,
+                    T=time_factor,
+                    min_spread=min_spread,
+                    max_spread=max_spread
+                )
+                self.logger.debug(f"A&S Core: σ={sigma:.4f}, γ={gamma}, κ={kappa} → δ={optimal_spread_val:.4f}")
+                
+            except Exception as e:
+                self.logger.warning(f"Shared A&S calc error: {e}, falling back to legacy")
+                optimal_spread_val = self.base_spread
+                
+            # Assign for next steps
+            calculated_spread = optimal_spread_val
+        else:
+            # Legacy inline implementation (Fallback)
+            try:
+                # Term 1: Risk-adjusted volatility component
+                sigma_scaled = sigma * 100
+                term1 = gamma * (sigma_scaled ** 2) * time_factor
+                
+                # Term 2: Liquidity-adjusted component (base spread)
+                term2 = (2 / gamma) * math.log(1 + gamma / kappa)
+                
+                calculated_spread = term1 + term2
+                
+                # Clamp to configured bounds
+                calculated_spread = max(min_spread, min(max_spread, calculated_spread))
+                
+                self.logger.debug(f"A&S Legacy: σ={sigma:.4f}, γ={gamma}, κ={kappa} → δ={calculated_spread:.4f}")
+                
+            except Exception as e:
+                self.logger.warning(f"A&S spread calc error: {e}, using base spread")
+                calculated_spread = self.base_spread
         
         # Phase 7: Hybrid Volatility Strategy v3.10.0
         vol_adapt_conf = Config.get("strategy", "volatility_adaptation", {})
@@ -635,7 +691,7 @@ class MarketMaker:
             spread_mult = float(mode_conf.get('spread_multiplier', 1.0))
             
             # Apply multiplier
-            adjusted_spread = optimal_spread * spread_mult
+            adjusted_spread = calculated_spread * spread_mult
             
             # Ensure still within bounds
             adjusted_spread = max(min_spread, min(max_spread, adjusted_spread))
@@ -650,13 +706,20 @@ class MarketMaker:
             
             return adjusted_spread
         
-        return optimal_spread
+        return calculated_spread
     
     def _calculate_volatility_sigma(self) -> float:
         """
         Calculate market volatility (σ) for A&S model.
         Uses rolling standard deviation of log returns.
         """
+        if STRATEGY_CORE_AVAILABLE:
+            import numpy as np
+            if len(self.price_history) < 20:
+                return 0.001
+            return volatility_sigma_from_prices(np.array(self.price_history), window=20)
+
+        # Legacy fallback
         if len(self.price_history) < 20:
             return 0.001  # Default low volatility
         
@@ -680,15 +743,15 @@ class MarketMaker:
         
         return sigma
     
-    def _calculate_reservation_price(self, mid_price: float, inventory_ratio: float) -> float:
+    def _calculate_reservation_price(self, mid_price: float, inventory_ratio: float, target_inventory_ratio: float = 0.0) -> float:
         """
         Avellaneda-Stoikov Reservation Price.
         
-        Formula: r = s - q × γ × σ² × (T-t)
+        Formula: r = s - (q - q_target) * γ * σ² * (T-t)
         
-        This shifts the reference price based on inventory position.
-        - Long position (q > 0): Reservation price < mid price (encourage selling)
-        - Short position (q < 0): Reservation price > mid price (encourage buying)
+        This shifts the reference price based on inventory position relative to target.
+        - q > q_target: Excess inventory -> Sell (Lower r)
+        - q < q_target: Deficit inventory -> Buy (Raise r)
         """
         as_conf = Config.get("strategy", "avellaneda_stoikov", {})
         if not as_conf.get('enabled', False):
@@ -699,16 +762,20 @@ class MarketMaker:
         time_factor = 0.5  # Neutral for 24/7 markets
         
         # q = inventory ratio (-1 to +1 range)
-        q = inventory_ratio
+        # Adjust for target inventory
+        q_effective = inventory_ratio - target_inventory_ratio
         
-        # Reservation price adjustment
-        adjustment = q * gamma * (sigma ** 2) * time_factor * mid_price
+        if STRATEGY_CORE_AVAILABLE:
+            reservation_price_val = reservation_price(mid_price, q_effective, gamma, sigma)
+        else:
+            # Legacy inline
+            time_factor = 0.5
+            adjustment = q_effective * gamma * (sigma ** 2) * time_factor * mid_price
+            reservation_price_val = mid_price - adjustment
         
-        reservation_price = mid_price - adjustment
+        self.logger.debug(f"A&S Reservation: mid={mid_price:.2f}, q={inventory_ratio:.3f}, tgt={target_inventory_ratio:.3f} -> q_eff={q_effective:.3f} -> r={reservation_price_val:.2f}")
         
-        self.logger.debug(f"A&S Reservation: mid={mid_price:.2f}, q={q:.3f} → r={reservation_price:.2f}")
-        
-        return reservation_price
+        return reservation_price_val
     
     def _calculate_legacy_spread(self):
         """Calculate spread based on ATR (Volatility) with USD limits."""
@@ -798,6 +865,14 @@ class MarketMaker:
         
         self._update_history(mid_price)
         self._update_candle(mid_price, time.time())
+        
+        # Dashboard Capture
+        self.current_price = mid_price
+        try:
+            self.current_sigma = self._calculate_volatility_sigma()
+        except:
+            self.current_sigma = 0.01
+            
         current_pos_qty = position.get('amount', 0.0)  # Total account position (for order mgmt)
         
         # --- Bot-Only P&L and Position ---
@@ -892,6 +967,7 @@ class MarketMaker:
              
         # Log Status
         self.logger.info(f"BotPos: {bot_pos_qty:.4f} | Mid: {mid_price:.2f} | Regime: {effective_regime} | RSI: {last_rsi:.1f} | BotP&L: ${bot_total_pnl:.2f} (R:${bot_pnl.get('realized_pnl',0):.2f} U:${bot_pnl.get('unrealized_pnl',0):.2f})")
+        self.current_regime = effective_regime
 
         # Sync to Paper Exchange
         if hasattr(self.exchange, 'set_market_regime'):
@@ -1070,10 +1146,57 @@ class MarketMaker:
             # Add AS-detected spread increase
             final_spread += self.as_spread_add_bps / 10000  # bps to fraction
         
+        # --- ML Directional Skew (Phase 4) ---
+        ml_target_inventory = 0.0
+        ml_prob = 0.5
+        
+        if self.ml_predictor and len(self.candles) > 60:
+            try:
+                # Predict direction (requires candles as DataFrame)
+                # self.candles contains OHLC. We need Volume/Trades if possible.
+                # MLPredictor handles missing columns gracefully or we mock them
+                df_candles = self.candles.copy()
+                if 'volume' not in df_candles.columns: df_candles['volume'] = 1000.0
+                if 'trades' not in df_candles.columns: df_candles['trades'] = 10.0
+                
+                # Fix dtypes/index
+                df_candles['timestamp'] = pd.to_datetime(df_candles['timestamp'], unit='s')
+                df_candles.set_index('timestamp', inplace=True)
+                
+                ml_prob = self.ml_predictor.predict(df_candles)
+                
+                # Convert prob to target inventory (-0.5 to +0.5)
+                # If prob > 0.5 (UP) -> Target Long
+                # If prob < 0.5 (DOWN) -> Target Short
+                # Strength factor: 0.5 (Max 50% Skew)
+                ml_target_inventory = (ml_prob - 0.5) * 2.0 * 0.5 
+                
+                if abs(ml_target_inventory) > 0.1:
+                    self.logger.info(f"🧠 ML Skew: Prob={ml_prob:.2f} -> TargetInv={ml_target_inventory:.2f}")
+
+                # Update regime string for dashboard
+                direction_str = "UP" if ml_prob > 0.55 else "DOWN" if ml_prob < 0.45 else "NEUTRAL"
+                self.current_ml_regime = f"LSTM:{direction_str} ({ml_prob:.2f})"
+                    
+            except Exception as e:
+                self.logger.error(f"ML Skew Error: {e}")
+                self.current_ml_regime = "LSTM:ERROR"
+        else:
+            self.current_ml_regime = f"LSTM:Wait ({len(self.candles)}/60)"
+        
         # --- A&S Reservation Price ---
         # Replace simple skew with Avellaneda-Stoikov reservation price
         # This provides more sophisticated inventory-based price adjustment
-        reservation_price = self._calculate_reservation_price(mid_price, inventory_ratio)
+        reservation_price = self._calculate_reservation_price(mid_price, inventory_ratio, target_inventory_ratio=ml_target_inventory)
+        
+        # Capture for Dashboard
+        self.reservation_price_val = reservation_price
+        self.current_spread_val = final_spread * 100 # %
+        self.last_ml_metrics = {
+            "vol_regime": "v2_hybrid", # Static for now
+            "prob": ml_prob,
+            "target_inv": ml_target_inventory
+        }
         
         target_bid = round_tick_size(reservation_price * (1 - final_spread / 2), self.tick_size)
         target_ask = round_tick_size(reservation_price * (1 + final_spread / 2), self.tick_size)
@@ -1096,9 +1219,12 @@ class MarketMaker:
                 "gamma": actual_gamma,
                 "kappa": actual_kappa,
                 "ml_regime": getattr(self, 'current_ml_regime', 'disabled'),
+                "hmm_regime": getattr(self, 'current_hmm_regime', 'disabled'),
                 "recent_pnl": adaptive_metrics.get('recent_pnl', 0),
                 "win_rate": adaptive_metrics.get('win_rate', 0),
-                "adjustments": adaptive_metrics.get('adjustments', 0)
+                "adjustments": adaptive_metrics.get('adjustments', 0),
+                "ml_prob": round(ml_prob, 4) if 'ml_prob' in locals() else 0.5,
+                "ml_target_inv": round(ml_target_inventory, 4) if 'ml_target_inventory' in locals() else 0.0
             })
 
         # Dropdown Check (Pass)
@@ -1359,6 +1485,7 @@ class MarketMaker:
                 "gamma": getattr(self, '_last_gamma', 1.0),
                 "kappa": getattr(self, '_last_kappa', 1000),
                 "ml_regime": ml_regime,
+                "hmm_regime": getattr(self, 'current_hmm_regime', 'unknown'), # Added hmm_regime
                 "recent_pnl": adaptive_metrics.get('recent_pnl', 0),
                 "win_rate": adaptive_metrics.get('win_rate', 50),
                 "adjustments": adaptive_metrics.get('adjustments', 0),
@@ -1372,7 +1499,9 @@ class MarketMaker:
                 "of_obi": of_metrics.get('obi', 0.0),
                 "of_toxicity": of_metrics.get('toxicity', 0.0),
                 "ml_direction": ml_metrics.get('direction'),
-                "ml_vol_regime": ml_metrics.get('vol_regime')
+                "ml_vol_regime": ml_metrics.get('vol_regime'),
+                "ml_prob": ml_prob,
+                "ml_target_inv": ml_target_inventory
             })
         
         # Save status for dashboard (Live mode)
@@ -1391,6 +1520,9 @@ class MarketMaker:
             if hasattr(self.exchange, 'fetch_and_save_trades'):
                 old_trade_count = self.exchange._get_trade_count(self.symbol) if hasattr(self.exchange, '_get_trade_count') else 0
                 self.exchange.fetch_and_save_trades(self.symbol)
+            
+            # Save JSON status for aimm-lab Dashboard
+            self._save_status(open_orders)
             
             # --- Telegram Notifications ---
             if self.notifier:
@@ -1456,55 +1588,83 @@ class MarketMaker:
                         self.logger.info(f"Daily PnL alert failed: {e}")
                     self._daily_pnl_last_date = today
 
-    async def _save_dashboard_metrics(self):
-        """Calculate and save extended metrics for Streamlit Dashboard."""
+    def _save_status(self, open_orders=None):
+        """Save bot status to JSON for Dashboard (aimm-lab Phase 5)"""
         try:
-            # 1. Gather Metrics
-            metrics = getattr(self.exchange, '_as_metrics', {}).copy()
+            # Gather metrics
+            balance = getattr(self.exchange, 'balance', {})
+            position = getattr(self.exchange, 'position', {})
+            mid_price = self.current_price
             
-            # Risk/Performance
-            metrics['sharpe_ratio'] = getattr(self.risk_manager, 'sharpe_ratio', 0.0)
-            metrics['max_drawdown'] = getattr(self.risk_manager, 'max_drawdown', 0.0)
+            # Open orders list
+            orders_list = []
+            if open_orders is None:
+                open_orders = getattr(self.exchange, 'open_orders', [])
             
-            # Inventory / Bias
-            metrics['inventory_bias'] = self.inventory / self.max_position_usd if self.max_position_usd else 0.0
+            for o in open_orders:
+                orders_list.append({
+                    'id': o.get('id', o.get('order_id', 'unknown')),
+                    'side': o.get('side', 'unknown'),
+                    'price': float(o.get('price', o.get('limit_price', 0))),
+                    'amount': float(o.get('amount', o.get('size', 0)))
+                })
             
-            # AS / ML
-            if self.as_detector:
-                metrics['as_prob'] = getattr(self.as_detector, 'current_prob', 0.0)
-                metrics['as_trades'] = getattr(self.as_detector, 'toxic_trade_count', 0)
-            
-            metrics['ml_regime'] = self.current_ml_regime
-            metrics['regime_confidence'] = getattr(self, '_regime_conf', 0.0)
-            
-            # Update Exchange State
-            if hasattr(self.exchange, 'set_as_metrics'):
-                self.exchange.set_as_metrics(metrics)
-            
-            # Trigger Save for Live Exchange (GrvtExchange)
-            # PaperExchange saves automatically when set_as_metrics is called, but GrvtExchange doesn't.
-            if hasattr(self.exchange, 'save_live_status'):
-                # Gather data for status file
-                status = await self.exchange.get_account_summary()
-                pos = await self.exchange.get_position(self.symbol)
-                open_orders = await self.exchange.get_open_orders(self.symbol)
+            # ML Metrics construction
+            # We map our internal ML state to what dashboard.py expects
+            ml_data = {}
+            if self.ml_predictor and hasattr(self, 'last_ml_metrics'):
+                # ml_prob is 0-1. Confidence = abs(prob - 0.5) * 2
+                prob = self.last_ml_metrics.get('prob', 0.5)
+                conf = abs(prob - 0.5) * 2.0
+                direction = "UP" if prob > 0.5 else "DOWN"
                 
-                # Get mid price robustly
-                mid_price = 0.0
-                if self.price_history:
-                    mid_price = self.price_history[-1]
-                
-                self.exchange.save_live_status(
-                    symbol=self.symbol,
-                    mid_price=mid_price,
-                    regime=self.current_ml_regime,
-                    position=pos,
-                    open_orders=open_orders,
-                    equity=status.get('total_equity', 0.0)
-                )
-                
+                ml_data = {
+                    'ml_vol_regime': self.last_ml_metrics.get('vol_regime', 'unknown'),
+                    'ml_direction': direction,
+                    'ml_confidence': conf,
+                    'ml_vol_value': 0.0, # Placeholder
+                    'ml_spread_mult': 1.0,
+                    'ml_size_mult': 1.0,
+                    'ml_prob': prob,
+                    'ml_target_inv': self.last_ml_metrics.get('target_inv', 0.0)
+                }
+            
+            # Combine into as_metrics (Dashboard compatibility)
+            as_metrics = {
+                'reservation_price': getattr(self, 'reservation_price_val', 0.0), # Need to capture this in cycle
+                'optimal_spread': getattr(self, 'current_spread_val', 0.0),     # Need to capture
+                'volatility_sigma': self.current_sigma * 100, # % display
+                'gamma': 0.0, # TODO: fetch from config
+                'kappa': 0.0,
+                'ml_regime': self.current_regime,
+                'adjustments': 0,
+                'win_rate': 0.0,
+                **ml_data
+            }
+            
+            status = {
+                'timestamp': time.time(),
+                'symbol': self.symbol,
+                'mid_price': mid_price,
+                'balance': balance,
+                'position': position,
+                'market_regime': self.current_regime,
+                'open_orders': len(orders_list),
+                'open_orders_list': orders_list,
+                'as_metrics': as_metrics
+            }
+            
+            # File path based on symbol
+            status_file = os.path.join("data", f"paper_status_{self.symbol}.json")
+            
+            # Atomic write (write to temp then rename)
+            temp_file = status_file + ".tmp"
+            with open(temp_file, 'w') as f:
+                json.dump(status, f, indent=2)
+            os.replace(temp_file, status_file)
+            
         except Exception as e:
-            self.logger.warning(f"Failed to save dashboard metrics: {e}")
+            self.logger.error(f"Failed to save status: {e}")
 
     async def run(self):
         self.logger.info("Strategy Started")
@@ -1539,10 +1699,6 @@ class MarketMaker:
                     continue
 
                 await self.cycle()
-                
-                # Update Dashboard Status (Works for both Paper and Live)
-                await self._save_dashboard_metrics()
-                
             except Exception as e:
                 self.logger.error(f"Error in strategy cycle: {e}")
             

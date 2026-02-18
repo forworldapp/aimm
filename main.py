@@ -1,7 +1,7 @@
 import asyncio
 import logging
-from dotenv import load_dotenv
-load_dotenv()
+# from dotenv import load_dotenv
+# load_dotenv()
 
 from core.config import Config
 from strategies.market_maker import MarketMaker

@@ -2,6 +2,23 @@
 
 All notable changes to the AIMM (AI Market Maker) project will be documented in this file.
 
+## [v7.0.0] - 2026-02-18
+### 🚀 LSTM Production Release
+- **Full LSTM Integration**: Activated `MLPredictor` (v2) for live trading.
+- **Hybrid Regime**: 
+    - **LSTM**: Short-term directional skew (Trend/Range).
+    - **HMM**: Long-term market state classification (Low/High Vol, Trend).
+- **Dashboard Upgrade**: 
+    - Added **ML Status (LSTM v2)** section (Probability, Target Inventory).
+    - Separated **Legacy HMM** metrics for clear dual-model monitoring.
+
+### 🐛 Bug Fixes & Stabilization
+- **A&S Model**: Fixed `optimal_spread` variable shadowing causing calculation errors.
+- **Risk Management**: Increased `max_drawdown_pct` to 50% to prevent premature stops.
+- **Order Flow**: Fixed `KeyError: 'amount'` in `OrderFlowAnalyzer` (added `size` fallback).
+- **Status Sync**: Fixed missing `hmm_regime` in dashboard JSON output.
+- **Persistence**: Fixed `AttributeError` in `_save_status` for `GrvtExchange`.
+
 ## [v6.0.0] - 2026-02-03
 ### 🤖 RL Agent Implementation
 - **Gymnasium Environment**: Custom `MarketMakingEnv` with 8-dim observation, 3-dim action

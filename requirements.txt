@@ -1,7 +1,8 @@
 grvt-pysdk
 ccxt
 pandas
-plotly
-streamlit
 python-dotenv
 pyyaml
+torch
+numpy
+schedule

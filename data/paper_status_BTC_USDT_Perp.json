@@ -1,1 +1,113 @@
-{"timestamp": 1771249811.9948819, "balance": {"USDT": 13251.137192}, "position": {"amount": 0.018, "entryPrice": 68621.422222221, "unrealizedPnL": -6.410153}, "mid_price": 68270.05, "open_orders_list": [{"side": "sell", "price": 68832.1, "amount": 0.003}, {"side": "sell", "price": 68968.9, "amount": 0.003}, {"side": "buy", "price": 68025.3, "amount": 0.002}, {"side": "sell", "price": 68695.3, "amount": 0.003}, {"side": "sell", "price": 69105.8, "amount": 0.003}, {"side": "buy", "price": 68161.9, "amount": 0.002}, {"side": "buy", "price": 67888.7, "amount": 0.002}, {"side": "buy", "price": 67752.1, "amount": 0.002}, {"side": "buy", "price": 67615.6, "amount": 0.002}, {"side": "sell", "price": 68558.4, "amount": 0.003}], "open_orders": 10, "market_regime": "neutral | RSI: 29.2 | BB%: 0.23", "regime": "neutral | RSI: 29.2 | BB%: 0.23", "cumulative_grid_profit": 0.615, "last_increase_price": 0.0, "as_metrics": {"reservation_price": 68270.05, "optimal_spread": 0.0016684636158922378, "volatility_sigma": 0.01, "gamma": 0.3000105582393986, "kappa": 200.0158373591105, "ml_regime": "high_vol", "recent_pnl": 0.0, "win_rate": 50.0, "adjustments": 0, "ml_vol_value": 0.8026191199800382, "ml_confidence": 0.0, "ml_spread_mult": 0.8, "ml_size_mult": 1.3, "of_obi": 0.0, "of_toxicity": 0.0, "ml_direction": null, "ml_vol_regime": "high"}}
+{
+  "timestamp": 1771448043.9866836,
+  "symbol": "BTC_USDT_Perp",
+  "mid_price": 66272.65,
+  "balance": {},
+  "position": {},
+  "market_regime": "waiting | BB%: 0.50",
+  "open_orders": 14,
+  "open_orders_list": [
+    {
+      "id": "0x010101050393037800000000973dac36",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    },
+    {
+      "id": "0x01010105037f40ab00000000973dac6d",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    },
+    {
+      "id": "0x01010105034e4bf300000000973dacd1",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    },
+    {
+      "id": "0x0101010503cca82500000000973dace6",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    },
+    {
+      "id": "0x0101010503fd49ed00000000973dad18",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    },
+    {
+      "id": "0x0101010503aa387200000000973dad34",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    },
+    {
+      "id": "0x010101050344e23400000000973dabfb",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    },
+    {
+      "id": "0x01010105034b032900000000973dac3e",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    },
+    {
+      "id": "0x0101010503f075a000000000973dad0a",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    },
+    {
+      "id": "0x010101050334beda00000000973dad2c",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    },
+    {
+      "id": "0x010101050374ef6500000000973dad57",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    },
+    {
+      "id": "0x01010105032aa37600000000973dad67",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    },
+    {
+      "id": "0x0101010503c6287500000000973dac07",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    },
+    {
+      "id": "0x0101010503490f2b00000000973dac23",
+      "side": "unknown",
+      "price": 0.0,
+      "amount": 0.0
+    }
+  ],
+  "as_metrics": {
+    "reservation_price": 66272.64994040669,
+    "optimal_spread": 0.2744566890651,
+    "volatility_sigma": 0.01841927690965341,
+    "gamma": 0.0,
+    "kappa": 0.0,
+    "ml_regime": "waiting | BB%: 0.50",
+    "adjustments": 0,
+    "win_rate": 0.0,
+    "ml_vol_regime": "v2_hybrid",
+    "ml_direction": "DOWN",
+    "ml_confidence": 0.0,
+    "ml_vol_value": 0.0,
+    "ml_spread_mult": 1.0,
+    "ml_size_mult": 1.0,
+    "ml_prob": 0.5,
+    "ml_target_inv": 0.0
+  }
+}

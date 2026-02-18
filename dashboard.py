@@ -497,71 +497,62 @@ if as_metrics and as_metrics.get('reservation_price', 0) > 0:
 # ============================================================
 
 # ============================================================
-# MODULAR COMPONENT: ML Learning Metrics (HMM v3.8.0)
+# MODULAR COMPONENT: ML Status (LSTM v2)
 # ============================================================
-st.markdown("### 🧠 Machine Learning Status (HMM v3.8.0)")
+st.markdown("### 🧠 ML Status (LSTM v2)")
 col_ml1, col_ml2, col_ml3, col_ml4 = st.columns(4)
 
 as_metrics = status.get('as_metrics', {})
 ml_regime = as_metrics.get('ml_regime', 'disabled')
+ml_prob = float(as_metrics.get('ml_prob', 0.5))
+target_inv = float(as_metrics.get('ml_target_inv', 0.0))
 
 with col_ml1:
-    regime_descriptions = {
-        'low_vol': '🟢 저변동성 (좁은 스프레드)',
-        'trend_up': '🔵 상승추세 (매도 선호)',
-        'trend_down': '🔴 하락추세 (매수 선호)',
-        'high_vol': '🟠 고변동성 (넓은 스프레드)',
-        'unknown': '⚪ 분석중...',
-        'disabled': '⚫ 비활성'
-    }
-    st.info(regime_descriptions.get(ml_regime, '⚪ Unknown'))
+    st.metric("🤖 모델 상태", ml_regime)
 
 with col_ml2:
-    gamma = as_metrics.get('gamma', 1.0)
-    st.metric("γ (위험회피)", f"{gamma:.2f}")
-    
+    # Probability with color
+    color = "green" if ml_prob > 0.55 else "red" if ml_prob < 0.45 else "gray"
+    icon = "📈" if ml_prob > 0.5 else "📉"
+    st.metric("🔮 상승 확률", f"{ml_prob:.1%}", delta=None)
+    st.caption(f":{color}[{icon} {ml_prob:.4f}]")
+
 with col_ml3:
-    kappa = as_metrics.get('kappa', 1000)
-    st.metric("κ (유동성)", f"{kappa:.0f}")
+    # Target Inventory Skew
+    st.metric("🎯 목표 인벤토리", f"{target_inv:+.2f}")
+    st.caption("(-0.5 ~ +0.5)")
 
 with col_ml4:
-    adjustments = as_metrics.get('adjustments', 0)
-    win_rate = as_metrics.get('win_rate', 0)
-    if adjustments > 0:
-        st.metric("🎯 승률 / 조정", f"{win_rate:.0f}% / {adjustments}회")
+    # Latched / Active Signal
+    if abs(target_inv) > 0.1:
+        st.success("✅ Signal Active")
     else:
-        st.metric("🎯 승률 / 조정", "대기중...")
-
-# HMM/GMM Extended Parameters Row
-col_gmm1, col_gmm2, col_gmm3, col_gmm4 = st.columns(4)
-
-with col_gmm1:
-    st.metric("🔬 모델", "HMM (v3.8.0)")
-    
-with col_gmm2:
-    # Grid Layers from ML regime
-    grid_layers = {
-        'low_vol': 10, 'trend_up': 7, 'trend_down': 7, 'high_vol': 5
-    }.get(ml_regime, 7)
-    st.metric("📊 그리드 레이어", f"{grid_layers}개")
-
-with col_gmm3:
-    # Order Size Multiplier
-    order_mult = {
-        'low_vol': '100%', 'trend_up': '80%', 'trend_down': '80%', 'high_vol': '50%'
-    }.get(ml_regime, '100%')
-    st.metric("📦 주문 배수", order_mult)
-
-with col_gmm4:
-    # Max Position Multiplier
-    pos_mult = {
-        'low_vol': '140%', 'trend_up': '100%', 'trend_down': '100%', 'high_vol': '60%'
-    }.get(ml_regime, '100%')
-    st.metric("💰 포지션 한도", pos_mult)
+        st.info("⚪ Neutral / Wait")
 
 # ============================================================
-# END: ML Learning Metrics (HMM v3.8.0)
+# END: ML Status (LSTM v2)
 # ============================================================
+
+# ============================================================
+# RESTORED: ML Agent (HMM v3.8.0) & A&S Metrics
+# ============================================================
+with st.expander("🔬 HMM & A&S 상세 지표 (Legacy)", expanded=False):
+    st.markdown("#### 🧠 Machine Learning (HMM v3.8.0)")
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        gamma = as_metrics.get('gamma', 1.0)
+        st.metric("γ (위험회피)", f"{gamma:.2f}")
+    with c2:
+        kappa = as_metrics.get('kappa', 1000)
+        st.metric("κ (유동성)", f"{kappa:.0f}")
+    with c3:
+        # Re-derive HMM state if possible or show static
+        hmm_state = as_metrics.get('hmm_regime', 'N/A')
+        st.metric("HMM State", hmm_state)
+    with c4:
+        adjustments = as_metrics.get('adjustments', 0)
+        st.metric("Param Adjustments", adjustments)
+
 
 # --- Charts Section ---
 st.divider()

@@ -1508,13 +1508,18 @@ class MarketMaker:
         if hasattr(self.exchange, 'save_live_status'):
             open_orders = await self.exchange.get_open_orders(self.symbol)
             status = await self.exchange.get_account_summary()
+            
+            # Extract metrics for reuse
+            equity_val = status.get('total_equity', 0.0)
+            current_pos_qty = position.get('amount', 0.0)
+            
             self.exchange.save_live_status(
                 symbol=self.symbol,
                 mid_price=mid_price,
                 regime=effective_regime,
                 position=position,
                 open_orders=open_orders,
-                equity=status.get('total_equity', 0.0)
+                equity=equity_val
             )
             # Also fetch and save trade history for dashboard (bot trades only)
             if hasattr(self.exchange, 'fetch_and_save_trades'):
@@ -1522,12 +1527,12 @@ class MarketMaker:
                 self.exchange.fetch_and_save_trades(self.symbol)
             
             # Save JSON status for aimm-lab Dashboard
-            self._save_status(open_orders)
+            # Construct balance dict to match expected format
+            balance_data = {"USDT": equity_val}
+            self._save_status(open_orders, balance=balance_data, position=position)
             
             # --- Telegram Notifications ---
             if self.notifier:
-                current_pos_qty = position.get('amount', 0.0)
-                equity_val = status.get('total_equity', 0.0)
                 
                 # 1. Fill notification (when new trades are recorded)
                 new_trade_count = self.exchange._get_trade_count(self.symbol) if hasattr(self.exchange, '_get_trade_count') else 0
@@ -1588,12 +1593,14 @@ class MarketMaker:
                         self.logger.info(f"Daily PnL alert failed: {e}")
                     self._daily_pnl_last_date = today
 
-    def _save_status(self, open_orders=None):
+    def _save_status(self, open_orders=None, balance=None, position=None):
         """Save bot status to JSON for Dashboard (aimm-lab Phase 5)"""
         try:
             # Gather metrics
-            balance = getattr(self.exchange, 'balance', {})
-            position = getattr(self.exchange, 'position', {})
+            if balance is None:
+                balance = getattr(self.exchange, 'balance', {})
+            if position is None:
+                position = getattr(self.exchange, 'position', {})
             mid_price = self.current_price
             
             # Open orders list
@@ -1631,12 +1638,13 @@ class MarketMaker:
             
             # Combine into as_metrics (Dashboard compatibility)
             as_metrics = {
-                'reservation_price': getattr(self, 'reservation_price_val', 0.0), # Need to capture this in cycle
-                'optimal_spread': getattr(self, 'current_spread_val', 0.0),     # Need to capture
-                'volatility_sigma': self.current_sigma * 100, # % display
-                'gamma': 0.0, # TODO: fetch from config
-                'kappa': 0.0,
-                'ml_regime': self.current_regime,
+                'reservation_price': getattr(self, 'reservation_price_val', 0.0),
+                'optimal_spread': getattr(self, 'current_spread_val', 0.0),
+                'volatility_sigma': self.current_sigma * 100,
+                'gamma': getattr(self, '_last_gamma', 1.0),
+                'kappa': getattr(self, '_last_kappa', 1000),
+                'ml_regime': getattr(self, 'current_ml_regime', 'disabled'),
+                'hmm_regime': getattr(self, 'current_hmm_regime', 'unknown'),
                 'adjustments': 0,
                 'win_rate': 0.0,
                 **ml_data

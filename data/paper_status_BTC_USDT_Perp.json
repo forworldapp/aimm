@@ -1,106 +1,116 @@
 {
-  "timestamp": 1771448043.9866836,
+  "timestamp": 1771543843.4221592,
   "symbol": "BTC_USDT_Perp",
-  "mid_price": 66272.65,
-  "balance": {},
-  "position": {},
-  "market_regime": "waiting | BB%: 0.50",
+  "mid_price": 66939.65,
+  "balance": {
+    "USDT": 13851.105981
+  },
+  "position": {
+    "amount": 0.003,
+    "entryPrice": 66599.122222222,
+    "unrealizedPnL": 1.02355
+  },
+  "market_regime": "neutral | RSI: 55.1 | BB%: 0.62",
   "open_orders": 14,
   "open_orders_list": [
     {
-      "id": "0x010101050393037800000000973dac36",
+      "id": "0x0101010503fd401f0000000097f4c743",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     },
     {
-      "id": "0x01010105037f40ab00000000973dac6d",
+      "id": "0x01010105031f001d0000000097f4c750",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     },
     {
-      "id": "0x01010105034e4bf300000000973dacd1",
+      "id": "0x0101010503a941c80000000097f4c780",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     },
     {
-      "id": "0x0101010503cca82500000000973dace6",
+      "id": "0x01010105039a10370000000097f4c7b7",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     },
     {
-      "id": "0x0101010503fd49ed00000000973dad18",
+      "id": "0x0101010503d2eb9b0000000097f4c7bb",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     },
     {
-      "id": "0x0101010503aa387200000000973dad34",
+      "id": "0x0101010503c14b190000000097f4c7e0",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     },
     {
-      "id": "0x010101050344e23400000000973dabfb",
+      "id": "0x0101010503c104040000000097f4c7e2",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     },
     {
-      "id": "0x01010105034b032900000000973dac3e",
+      "id": "0x0101010503aede9c0000000097f4c841",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     },
     {
-      "id": "0x0101010503f075a000000000973dad0a",
+      "id": "0x0101010503bc6e520000000097f4c761",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     },
     {
-      "id": "0x010101050334beda00000000973dad2c",
+      "id": "0x01010105031b93cf0000000097f4c768",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     },
     {
-      "id": "0x010101050374ef6500000000973dad57",
+      "id": "0x01010105036acf0c0000000097f4c7ad",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     },
     {
-      "id": "0x01010105032aa37600000000973dad67",
+      "id": "0x010101050380fe690000000097f4c7c7",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     },
     {
-      "id": "0x0101010503c6287500000000973dac07",
+      "id": "0x010101050340590c0000000097f4c7d0",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     },
     {
-      "id": "0x0101010503490f2b00000000973dac23",
+      "id": "0x01010105036c2d580000000097f4c7fa",
       "side": "unknown",
       "price": 0.0,
       "amount": 0.0
     }
   ],
   "as_metrics": {
-    "reservation_price": 66272.64994040669,
-    "optimal_spread": 0.2744566890651,
-    "volatility_sigma": 0.01841927690965341,
-    "gamma": 0.0,
-    "kappa": 0.0,
-    "ml_regime": "waiting | BB%: 0.50",
+    "reservation_price": 66939.64985765782,
+    "optimal_spread": 0.2789901998520848,
+    "volatility_sigma": 0.016275114822325843,
+    "gamma": 0.4998392422510129,
+    "kappa": 499.7588633765166,
+    "ml_regime": "LSTM:NEUTRAL (0.50)",
+    "hmm_regime": "trend_down",
     "adjustments": 0,
     "win_rate": 0.0,
+    "as_prob": 0.0,
+    "as_trades": 0,
+    "inventory_bias": 0.04016379,
     "ml_vol_regime": "v2_hybrid",
     "ml_direction": "DOWN",
     "ml_confidence": 0.0,

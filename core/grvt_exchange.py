@@ -113,24 +113,33 @@ class GrvtExchange(ExchangeInterface):
         """
         Places a limit order using the SDK with retry logic.
         """
+        import time
         if not self.exchange: return None
         
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                # GRVT SDK: create_order(symbol, order_type, side, amount, price)
+                # Try passing client_order_id in multiple ways to ensure SDK picks it up
+                # Must be integer! Use 99 prefix + microsecond timestamp (approx 16-17 digits total)
+                # 99 + 1771525716709 (13 digits ms) -> 17 digits. Safe for uint64.
+                cid = int(f"99{int(time.time()*1000)}")
                 order = self.exchange.create_order(
                     symbol=symbol,
                     order_type='limit',
                     side=side,
                     amount=quantity,
-                    price=price
+                    price=price,
+                    params={
+                        'client_order_id': cid,
+                        'clientOrderId': cid,
+                        'metadata': {'client_order_id': cid}
+                    }
                 )
                 order_id = order.get('order_id', order.get('id'))
                 if order_id:
                     self._bot_order_ids.add(order_id)
                     self._save_bot_order_ids()  # Persist to disk immediately
-                self.logger.info(f"Order placed: {order_id}")
+                self.logger.info(f"Order placed: {order_id} (CID: {cid})")
                 return order_id
             except Exception as e:
                 err_msg = str(e).lower()
@@ -234,6 +243,7 @@ class GrvtExchange(ExchangeInterface):
 
     async def close_position(self, symbol: str):
         """Close the current position by placing a market order in the opposite direction."""
+        import time
         if not self.exchange: return
         try:
             position = await self.get_position(symbol)
@@ -249,14 +259,20 @@ class GrvtExchange(ExchangeInterface):
             self.logger.info(f"Closing position: {side} {abs_size} {symbol}")
             
             # Place market order to close
+            cid = int(f"99{int(time.time()*1000)}")
             order = self.exchange.create_order(
                 symbol=symbol,
                 order_type='market',
                 side=side,
-                amount=abs_size
+                amount=abs_size,
+                params={
+                    'client_order_id': cid,
+                    'clientOrderId': cid,
+                    'metadata': {'client_order_id': cid}
+                }
             )
             order_id = order.get('order_id', order.get('id'))
-            self.logger.info(f"Position closed with market order: {order_id}")
+            self.logger.info(f"Position closed with market order: {order_id} (CID: {cid})")
             return order_id
         except Exception as e:
             self.logger.error(f"Market close failed for {symbol}: {e}")
@@ -414,14 +430,19 @@ class GrvtExchange(ExchangeInterface):
             trades_list = sorted(trades_list, key=lambda x: x.get('event_time', 0))
             
             # Process new trades
-            # NOTE: All trades on this sub-account are treated as bot trades.
-            # GRVT SDK returns 0x00 for order_id on create, making order_id matching impossible.
-            # If you do manual trading on the SAME sub-account, you'll need a different approach.
+            # NOTE: Filter by 'bot-' prefix in client_order_id to isolate bot trades from manual/other trades.
             new_rows = []
             for trade in trades_list:
                 trade_id = trade.get('trade_id', '')
                 if not trade_id or trade_id in existing_ids:
                     continue
+                
+                # Filter by client_order_id prefix
+                client_oid = trade.get('client_order_id', '')
+                # Also accept if we have the trade_id in our local tracking (legacy support or just in case)
+                # Filter for numeric ID starting with '99' (our bot signature)
+                if not str(client_oid).startswith('99'):
+                     continue
                     
                 # GRVT trade format
                 is_buyer = trade.get('is_buyer')

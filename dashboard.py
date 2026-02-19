@@ -332,14 +332,20 @@ try:
 
             # --- Metrics Calculation (Full History) ---
             # 1. Max Drawdown
-            equity_series = df_full['total_usdt_value']
-            rolling_max = equity_series.cummax()
-            drawdown = (equity_series - rolling_max) / rolling_max
-            calc_max_dd = abs(drawdown.min())
+            # Filter out zero/negative values which cause 100% fake drawdown
+            valid_equity = df_full[df_full['total_usdt_value'] > 10]['total_usdt_value']
+            
+            if not valid_equity.empty:
+                rolling_max = valid_equity.cummax()
+                drawdown = (valid_equity - rolling_max) / rolling_max
+                calc_max_dd = abs(drawdown.min())
             
             # 2. Sharpe Ratio (Hourly Returns)
             # Resample to hourly for stable Sharpe
             hourly_equity = df_full.set_index('datetime')['total_usdt_value'].resample('1h').last().dropna()
+            # Filter zero/low values from hourly sampling too
+            hourly_equity = hourly_equity[hourly_equity > 10]
+            
             if len(hourly_equity) > 24:
                 returns = hourly_equity.pct_change().dropna()
                 if not returns.empty and returns.std() > 0:

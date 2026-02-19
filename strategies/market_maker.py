@@ -1636,6 +1636,21 @@ class MarketMaker:
                     'ml_target_inv': self.last_ml_metrics.get('target_inv', 0.0)
                 }
             
+            # Calculate Risk / AS Metrics
+            as_prob = 0.0
+            toxic_trades = 0
+            if hasattr(self, 'adverse_selection_detector') and self.adverse_selection_detector:
+                stats = self.adverse_selection_detector.get_stats()
+                as_prob = stats.get('adverse_rate', 0.0)
+                toxic_trades = stats.get('adverse_trades', 0)
+
+            # Calculate Inventory Bias
+            max_pos = self.max_position_usd
+            current_pos_usd = abs(position.get('amount', 0.0) * mid_price)
+            inv_bias = (current_pos_usd / max_pos) if max_pos > 0 else 0.0
+            if position.get('amount', 0.0) < 0:
+                inv_bias = -inv_bias
+
             # Combine into as_metrics (Dashboard compatibility)
             as_metrics = {
                 'reservation_price': getattr(self, 'reservation_price_val', 0.0),
@@ -1647,6 +1662,9 @@ class MarketMaker:
                 'hmm_regime': getattr(self, 'current_hmm_regime', 'unknown'),
                 'adjustments': 0,
                 'win_rate': 0.0,
+                'as_prob': as_prob,
+                'as_trades': toxic_trades,
+                'inventory_bias': inv_bias,
                 **ml_data
             }
             

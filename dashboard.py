@@ -300,6 +300,62 @@ except Exception as e:
 if not status:
     status = st.session_state.last_valid_status
 
+# --- Status Data Loading with Persistence ---
+
+# --- Pre-calculate Historical Metrics (Sharpe, MaxDD) ---
+calc_sharpe = 0.0
+calc_max_dd = 0.0
+calc_recent_pnl = 0.0
+
+# Load chart data EARLY for metrics calculation
+df_hist = pd.DataFrame()
+try:
+    if os.path.exists(history_file):
+        # Read full history for metrics stats
+        df_full = pd.read_csv(history_file, on_bad_lines='skip')
+        
+        if 'timestamp' not in df_full.columns and not df_full.empty:
+             df_full = pd.read_csv(history_file, names=["timestamp", "total_usdt_value", "realized_pnl", "price"], on_bad_lines='skip')
+             
+        if not df_full.empty and len(df_full) > 0:
+            # Prepare df_hist for charts (resampled)
+            df_full['datetime'] = pd.to_datetime(df_full['timestamp'], unit='s', utc=True)
+            df_full = df_full[df_full['datetime'].dt.year >= 2024]
+            df_full['datetime'] = df_full['datetime'].dt.tz_convert('Asia/Seoul')
+            
+            # Chart Data (Recent 600 points)
+            df_resampled = df_full.set_index('datetime').resample('5s').last().dropna().reset_index()
+            if len(df_resampled) > 12:
+                df_hist = df_resampled.tail(600)
+            else:
+                df_hist = df_full.tail(2000)
+
+            # --- Metrics Calculation (Full History) ---
+            # 1. Max Drawdown
+            equity_series = df_full['total_usdt_value']
+            rolling_max = equity_series.cummax()
+            drawdown = (equity_series - rolling_max) / rolling_max
+            calc_max_dd = abs(drawdown.min())
+            
+            # 2. Sharpe Ratio (Hourly Returns)
+            # Resample to hourly for stable Sharpe
+            hourly_equity = df_full.set_index('datetime')['total_usdt_value'].resample('1h').last().dropna()
+            if len(hourly_equity) > 24:
+                returns = hourly_equity.pct_change().dropna()
+                if not returns.empty and returns.std() > 0:
+                    # Annualized Sharpe (assuming 24h * 365 = 8760 hours)
+                    calc_sharpe = (returns.mean() / returns.std()) * (8760 ** 0.5)
+            
+            # 3. Recent PnL (Since First Entry of History File)
+            # Or assume file is session history
+            first_eq = df_full['total_usdt_value'].iloc[0]
+            last_eq = df_full['total_usdt_value'].iloc[-1]
+            calc_recent_pnl = last_eq - first_eq
+            
+except Exception as e:
+    pass
+
+
 # --- Metrics Section ---
 st.subheader("📊 Live Performance")
 # Adjust column ratios
@@ -467,11 +523,11 @@ if as_metrics and as_metrics.get('reservation_price', 0) > 0:
             return default
 
     with col_r1:
-        sharpe = safe_float(as_metrics.get('sharpe_ratio'))
-        st.metric("Sharpe Ratio", f"{sharpe:.2f}")
+        # Use calculated Sharpe
+        st.metric("Sharpe Ratio", f"{calc_sharpe:.2f}")
     with col_r2:
-        tdd = safe_float(as_metrics.get('max_drawdown'))
-        st.metric("Max Drawdown", f"{tdd*100:.2f}%")
+        # Use calculated MaxDD
+        st.metric("Max Drawdown", f"{calc_max_dd*100:.2f}%")
     with col_r3:
         as_prob = safe_float(as_metrics.get('as_prob'))
         as_trades = int(safe_float(as_metrics.get('as_trades')))
@@ -557,28 +613,9 @@ with st.expander("🔬 HMM & A&S 상세 지표 (Legacy)", expanded=False):
 # --- Charts Section ---
 st.divider()
 
-# Load chart data BEFORE creating columns
-df_hist = pd.DataFrame()
-try:
-    if os.path.exists(history_file):
-        df_temp = pd.read_csv(history_file, on_bad_lines='skip')
-        
-        if 'timestamp' not in df_temp.columns and not df_temp.empty:
-             df_temp = pd.read_csv(history_file, names=["timestamp", "total_usdt_value", "realized_pnl", "price"], on_bad_lines='skip')
-             
-        if not df_temp.empty and len(df_temp) > 0:
-            df_temp['datetime'] = pd.to_datetime(df_temp['timestamp'], unit='s', utc=True)
-            df_temp = df_temp[df_temp['datetime'].dt.year >= 2024]
-            df_temp['datetime'] = df_temp['datetime'].dt.tz_convert('Asia/Seoul')
-            
-            df_resampled = df_temp.set_index('datetime').resample('5s').last().dropna().reset_index()
-            
-            if len(df_resampled) > 12:
-                df_hist = df_resampled.tail(600)
-            else:
-                df_hist = df_temp.tail(2000)
-except Exception as e:
-    pass  # Silent fail, will show "Waiting for data" message
+# Chart data loaded earlier
+if df_hist.empty:
+    pass # Silent fail
 
 # Create columns AFTER data is loaded
 col_chart1, col_chart2 = st.columns(2)

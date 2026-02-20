@@ -910,12 +910,14 @@ class MarketMaker:
                 self.is_active = False
                 return
             
-            # Max Drawdown: 15% of bot cost basis
-            if bot_cost_basis > 0 and bot_total_pnl < 0:
-                bot_dd_pct = abs(bot_total_pnl) / bot_cost_basis
+            # Max Drawdown: 15% of ALLOCATED CAPITAL (max_position_usd)
+            # Use max_position_usd as the denominator to better reflect portfolio risk
+            alloc_capital = self.risk_manager.max_position_usd
+            if alloc_capital > 0 and bot_total_pnl < 0:
+                bot_dd_pct = abs(bot_total_pnl) / alloc_capital
                 if bot_dd_pct > self.risk_manager.max_drawdown:
                     self.logger.critical(f"🚨 BOT MAX DRAWDOWN: {bot_dd_pct*100:.1f}% > {self.risk_manager.max_drawdown*100:.0f}%")
-                    self.logger.critical(f"   Bot P&L: ${bot_total_pnl:.2f} / Cost Basis: ${bot_cost_basis:.2f}")
+                    self.logger.critical(f"   Bot P&L: ${bot_total_pnl:.2f} / Allocated Capital: ${alloc_capital:.2f}")
                     self.logger.critical("Cancelling BOT orders only.")
                     
                     await self.exchange.cancel_all_orders(self.symbol)

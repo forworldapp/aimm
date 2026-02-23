@@ -208,6 +208,30 @@ class GrvtExchange(ExchangeInterface):
             self.logger.error(f"Error fetching position: {e}")
             return {'amount': 0.0, 'entryPrice': 0.0, 'unrealizedPnL': 0.0}
 
+    async def fetch_ohlcv(self, symbol: str, timeframe: str = '1m', limit: int = 100) -> List[List]:
+        """Fetch historical OHLCV data from GRVT and normalize to CCXT standard."""
+        if not self.exchange: return []
+        try:
+            raw = self.exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+            if isinstance(raw, dict) and 'result' in raw:
+                normalized = []
+                for entry in raw['result']:
+                    # GRVT timestamps are in nanoseconds, CCXT standard is milliseconds
+                    ts_ms = int(entry['open_time']) // 1_000_000
+                    normalized.append([
+                        ts_ms,
+                        float(entry['open']),
+                        float(entry['high']),
+                        float(entry['low']),
+                        float(entry['close']),
+                        float(entry['volume_b'])
+                    ])
+                return normalized
+            return raw
+        except Exception as e:
+            self.logger.error(f"Error fetching OHLCV for {symbol}: {e}")
+            return []
+
     async def get_account_summary(self) -> Dict:
         """Fetch account summary (equity including unrealized PnL) from GRVT."""
         if not self.exchange: return {}

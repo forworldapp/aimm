@@ -426,6 +426,56 @@ class MarketMaker:
         if len(self.price_history) > self.history_max_len:
             self.price_history.pop(0)
 
+    async def _preload_candles(self):
+        """Preload historical candles from the exchange on startup."""
+        try:
+            self.logger.info(f"Preloading 200 candles for {self.symbol}...")
+            ohlcv = await self.exchange.fetch_ohlcv(self.symbol, timeframe='1m', limit=200)
+            if not ohlcv:
+                self.logger.warning("No historical candles returned from exchange.")
+                return
+
+            new_candles = []
+            for entry in ohlcv:
+                try:
+                    # Handle both standard CCXT (list) and potential raw API (dict)
+                    if isinstance(entry, (list, tuple)):
+                        ts_ms = float(entry[0])
+                        open_p = float(entry[1])
+                        high_p = float(entry[2])
+                        low_p = float(entry[3])
+                        close_p = float(entry[4])
+                        volume = float(entry[5]) if len(entry) > 5 else 0.0
+                    else:
+                        # Fallback for dict structure if normalization missed it
+                        ts_ms = float(entry.get('open_time', entry.get('timestamp', 0)))
+                        if ts_ms > 1e15: ts_ms //= 1_000_000 # Convert ns to ms
+                        open_p = float(entry.get('open', 0))
+                        high_p = float(entry.get('high', 0))
+                        low_p = float(entry.get('low', 0))
+                        close_p = float(entry.get('close', 0))
+                        volume = float(entry.get('volume', entry.get('volume_b', 0)))
+
+                    dt = datetime.fromtimestamp(ts_ms / 1000.0)
+                    minute = dt.replace(second=0, microsecond=0)
+                    new_candles.append({
+                        'timestamp': minute,
+                        'open': open_p,
+                        'high': high_p,
+                        'low': low_p,
+                        'close': close_p,
+                        'volume': volume
+                    })
+                except (ValueError, TypeError, KeyError, IndexError) as e:
+                    self.logger.warning(f"Skipping malformed candle: {entry} - {e}")
+                    continue
+            
+            if new_candles:
+                self.candles = pd.DataFrame(new_candles)
+                self.logger.info(f"✅ Successfully preloaded {len(self.candles)} candles.")
+        except Exception as e:
+            self.logger.error(f"Failed to preload candles: {e}")
+
     def _update_candle(self, price, timestamp):
         """Update 1-minute OHLC candles."""
         dt = datetime.fromtimestamp(timestamp)
@@ -434,16 +484,18 @@ class MarketMaker:
         if self.current_candle is None:
             self.current_candle = {
                 'timestamp': current_minute,
-                'open': price, 'high': price, 'low': price, 'close': price
+                'open': price, 'high': price, 'low': price, 'close': price,
+                'volume': 0.0, 'trades': 0
             }
         elif self.current_candle['timestamp'] != current_minute:
             new_row = pd.DataFrame([self.current_candle])
             self.candles = pd.concat([self.candles, new_row], ignore_index=True)
-            if len(self.candles) > 100:
-                self.candles = self.candles.iloc[-100:]
+            if len(self.candles) > 500:
+                self.candles = self.candles.iloc[-500:]
             self.current_candle = {
                 'timestamp': current_minute,
-                'open': price, 'high': price, 'low': price, 'close': price
+                'open': price, 'high': price, 'low': price, 'close': price,
+                'volume': 0.0, 'trades': 0
             }
         else:
             self.current_candle['high'] = max(self.current_candle['high'], price)
@@ -1152,20 +1204,33 @@ class MarketMaker:
         ml_target_inventory = 0.0
         ml_prob = 0.5
         
-        if self.ml_predictor and len(self.candles) > 60:
+        if self.ml_predictor and len(self.candles) >= 180:
             try:
                 # Predict direction (requires candles as DataFrame)
                 # self.candles contains OHLC. We need Volume/Trades if possible.
                 # MLPredictor handles missing columns gracefully or we mock them
+                # Ensure all required features are present and filled
                 df_candles = self.candles.copy()
                 if 'volume' not in df_candles.columns: df_candles['volume'] = 1000.0
                 if 'trades' not in df_candles.columns: df_candles['trades'] = 10.0
                 
-                # Fix dtypes/index
-                df_candles['timestamp'] = pd.to_datetime(df_candles['timestamp'], unit='s')
+                df_candles['volume'] = df_candles['volume'].fillna(1000.0)
+                df_candles['trades'] = df_candles['trades'].fillna(10.0)
+                if 'taker_buy_base' not in df_candles.columns: 
+                    df_candles['taker_buy_base'] = df_candles['volume'] * 0.5
+                else:
+                    df_candles['taker_buy_base'] = df_candles['taker_buy_base'].fillna(df_candles['volume'] * 0.5)
+                
+                # Fix dtypes/index - timestamp is already datetime objects
+                df_candles['timestamp'] = pd.to_datetime(df_candles['timestamp'])
                 df_candles.set_index('timestamp', inplace=True)
                 
                 ml_prob = self.ml_predictor.predict(df_candles)
+                
+                # Enhanced Debug: Why 0.50?
+                if ml_prob == 0.5:
+                    nan_cols = df_candles.columns[df_candles.isna().any()].tolist()
+                    self.logger.debug(f"🧠 ML Debug: Return 0.50. Candles={len(df_candles)}. NaNs in: {nan_cols}")
                 
                 # Convert prob to target inventory (-0.5 to +0.5)
                 # If prob > 0.5 (UP) -> Target Long
@@ -1184,7 +1249,7 @@ class MarketMaker:
                 self.logger.error(f"ML Skew Error: {e}")
                 self.current_ml_regime = "LSTM:ERROR"
         else:
-            self.current_ml_regime = f"LSTM:Wait ({len(self.candles)}/60)"
+            self.current_ml_regime = f"LSTM:Wait ({len(self.candles)}/180)"
         
         # --- A&S Reservation Price ---
         # Replace simple skew with Avellaneda-Stoikov reservation price
@@ -1369,9 +1434,9 @@ class MarketMaker:
             bid_qty *= fr_bid_size_mult
             ask_qty *= fr_ask_size_mult
             
-            # Re-check minimums
-            bid_qty = max(bid_qty, 0.001)
-            ask_qty = max(ask_qty, 0.001)
+            # Re-check minimums and round to fix granularity error
+            bid_qty = max(round(bid_qty, 3), 0.001)
+            ask_qty = max(round(ask_qty, 3), 0.001)
             
             if allow_buy:
                 buy_orders.append((bid_p, bid_qty))
@@ -1611,11 +1676,29 @@ class MarketMaker:
                 open_orders = getattr(self.exchange, 'open_orders', [])
             
             for o in open_orders:
+                # Handle nested GRVT SDK structure
+                legs = o.get('legs', [])
+                leg = legs[0] if legs else {}
+                
+                # Side detection
+                side = o.get('side')
+                if not side and leg:
+                    side = 'buy' if leg.get('is_buying_asset') else 'sell'
+                
+                # Price/Amount
+                price = o.get('price', o.get('limit_price'))
+                if price is None and leg:
+                    price = leg.get('limit_price', leg.get('price', 0))
+                
+                amount = o.get('amount', o.get('size'))
+                if amount is None and leg:
+                    amount = leg.get('size', leg.get('amount', 0))
+                
                 orders_list.append({
                     'id': o.get('id', o.get('order_id', 'unknown')),
-                    'side': o.get('side', 'unknown'),
-                    'price': float(o.get('price', o.get('limit_price', 0))),
-                    'amount': float(o.get('amount', o.get('size', 0)))
+                    'side': side or 'unknown',
+                    'price': float(price) if price else 0.0,
+                    'amount': float(amount) if amount else 0.0
                 })
             
             # ML Metrics construction
@@ -1696,6 +1779,8 @@ class MarketMaker:
 
     async def run(self):
         self.logger.info("Strategy Started")
+        # Preload historical candles for ML and technical indicators
+        await self._preload_candles()
         self.is_running = True
         self.is_active = True # Force Auto-Start
         

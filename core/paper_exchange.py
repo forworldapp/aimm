@@ -497,6 +497,17 @@ class PaperGrvtExchange(GrvtExchange):
              pos['unrealizedPnL'] = (self.last_mid_price - pos['entryPrice']) * pos['amount']
         return pos
         
+    async def fetch_ohlcv(self, symbol: str, timeframe: str = '1m', limit: int = 100) -> List[List]:
+        """Fetch historical OHLCV data from Binance (for paper trading)."""
+        # Convert GRVT symbol to Binance format
+        binance_symbol = symbol.replace("_USDT_Perp", "/USDT:USDT").replace("_", "/")
+        try:
+            ohlcv = await self.exchange.fetch_ohlcv(binance_symbol, timeframe=timeframe, limit=limit)
+            return ohlcv
+        except Exception as e:
+            self.logger.error(f"Error fetching OHLCV from Binance for {binance_symbol}: {e}")
+            return []
+        
     async def get_account_summary(self):
         """Simulate account summary for Risk Manager."""
         # Calculate Unrealized PnL

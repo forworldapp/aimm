@@ -310,25 +310,29 @@ calc_recent_pnl = 0.0
 # Load chart data EARLY for metrics calculation
 df_hist = pd.DataFrame()
 try:
-    if os.path.exists(history_file):
-        # Read full history for metrics stats
-        df_full = pd.read_csv(history_file, on_bad_lines='skip')
-        
-        if 'timestamp' not in df_full.columns and not df_full.empty:
-             df_full = pd.read_csv(history_file, names=["timestamp", "total_usdt_value", "realized_pnl", "price"], on_bad_lines='skip')
-             
-        if not df_full.empty and len(df_full) > 0:
-            # Prepare df_hist for charts (resampled)
-            df_full['datetime'] = pd.to_datetime(df_full['timestamp'], unit='s', utc=True)
-            df_full = df_full[df_full['datetime'].dt.year >= 2024]
-            df_full['datetime'] = df_full['datetime'].dt.tz_convert('Asia/Seoul')
+        if os.path.exists(history_file):
+            # Optim: Only read enough for the chart to be fast
+            # But we need full history for Sharpe/DD. Let's use a smaller tail for chart.
+            df_full = pd.read_csv(history_file, on_bad_lines='skip')
             
-            # Chart Data (Recent 600 points)
-            df_resampled = df_full.set_index('datetime').resample('5s').last().dropna().reset_index()
-            if len(df_resampled) > 12:
-                df_hist = df_resampled.tail(600)
-            else:
-                df_hist = df_full.tail(2000)
+            # Auto-fix missing headers
+            if not df_full.empty and not isinstance(df_full.iloc[0,0], (int, float, str)):
+                 pass # Already has header
+            elif not df_full.empty and 'timestamp' not in df_full.columns:
+                 df_full = pd.read_csv(history_file, names=["timestamp", "total_usdt_value", "realized_pnl", "price"], on_bad_lines='skip')
+
+            if not df_full.empty:
+                # Prepare df_hist for charts (resampled)
+                df_full['datetime'] = pd.to_datetime(df_full['timestamp'], unit='s', utc=True)
+                df_full = df_full[df_full['datetime'].dt.year >= 2024]
+                df_full['datetime'] = df_full['datetime'].dt.tz_convert('Asia/Seoul')
+                
+                # Chart Data (Recent 600 points)
+                df_resampled = df_full.set_index('datetime').resample('5s').last().dropna().reset_index()
+                if len(df_resampled) > 12:
+                    df_hist = df_resampled.tail(600)
+                else:
+                    df_hist = df_full.tail(2000)
 
             # --- Metrics Calculation (Full History) ---
             # 1. Max Drawdown
@@ -364,6 +368,13 @@ except Exception as e:
 
 # --- Metrics Section ---
 st.subheader("📊 Live Performance")
+
+# --- Last Updated Indicator ---
+last_ts = status.get('timestamp', 0)
+if last_ts > 0:
+    dt_ls = datetime.datetime.fromtimestamp(last_ts).strftime('%H:%M:%S')
+    st.caption(f"⏱️ Last Updated: {dt_ls} (Auto-refresh: {refresh_interval}s)")
+
 # Adjust column ratios
 col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 0.8, 0.7])
 
@@ -421,11 +432,15 @@ with st.expander("📋 Grid Order Details", expanded=True):
         with c1:
             st.markdown("**🟢 Bids (Buy)**")
             for o in bids:
-                st.text(f"${o['price']:,.1f} | {o['amount']:.4f} BTC")
+                price = o.get('price', 0)
+                amount = o.get('amount', 0)
+                st.text(f"${price:,.1f} | {amount:.4f} BTC")
         with c2:
             st.markdown("**🔴 Asks (Sell)**")
             for o in asks:
-                st.text(f"${o['price']:,.1f} | {o['amount']:.4f} BTC")
+                price = o.get('price', 0)
+                amount = o.get('amount', 0)
+                st.text(f"${price:,.1f} | {amount:.4f} BTC")
     else:
         st.info("📭 No active grid orders")
 
@@ -562,7 +577,7 @@ if as_metrics and as_metrics.get('reservation_price', 0) > 0:
 # MODULAR COMPONENT: ML Status (LSTM v2)
 # ============================================================
 st.markdown("### 🧠 ML Status (LSTM v2)")
-col_ml1, col_ml2, col_ml3, col_ml4 = st.columns(4)
+col_ml1, col_ml2, col_ml3, col_ml4 = st.columns([1.5, 1, 1, 1])
 
 as_metrics = status.get('as_metrics', {})
 ml_regime = as_metrics.get('ml_regime', 'disabled')

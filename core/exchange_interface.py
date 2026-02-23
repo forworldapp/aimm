@@ -29,3 +29,11 @@ class ExchangeInterface:
         Should return {'amount': float, 'entryPrice': float, 'unrealizedPnL': float}
         """
         pass
+
+    @abstractmethod
+    async def fetch_ohlcv(self, symbol: str, timeframe: str = '1m', limit: int = 100) -> List[List]:
+        """
+        Fetch historical OHLCV data.
+        Returns a list of [timestamp, open, high, low, close, volume]
+        """
+        pass
